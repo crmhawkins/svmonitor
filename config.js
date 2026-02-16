@@ -45,7 +45,7 @@ module.exports = {
     aiApi: {
         url: process.env.AI_API_URL || 'https://aiapi.hawkins.es/chat/chat',
         apiKey: process.env.AI_API_KEY || 'OllamaAPI_2024_K8mN9pQ2rS5tU7vW3xY6zA1bC4eF8hJ0lM',
-        defaultModel: process.env.AI_MODEL || 'mistral' // mistral es excelente para análisis de seguridad
+        defaultModel: process.env.AI_MODEL || 'mistral:7b-instruct' // mistral:7b-instruct es excelente para análisis de seguridad
     },
     
     // Configuración de logs persistentes

@@ -35,6 +35,7 @@ let crontabInterval = null;
 let siteCheckInterval = null;
 let fileWatcher = null;
 let discoveredSites = new Map(); // Cache de sitios descubiertos
+let siteStatusHistory = new Map(); // Historial de estados de sitios para detectar cambios
 
 // Manejo de conexión
 socket.on('connect', () => {

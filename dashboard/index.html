@@ -1049,6 +1049,7 @@
         }
         
         // Actualizar investigación SOC
+        let socUpdateThrottle = {};
         function updateSOCInvestigation(investigation) {
             const container = document.getElementById('socInvestigations');
             if (container.querySelector('.empty-state')) {
@@ -1056,11 +1057,26 @@
             }
             
             let investigationEl = document.getElementById(`soc-inv-${investigation.id}`);
+            const isNew = !investigationEl;
+            
             if (!investigationEl) {
                 investigationEl = document.createElement('div');
                 investigationEl.id = `soc-inv-${investigation.id}`;
                 investigationEl.style.cssText = 'background: #0d1117; border: 1px solid #30363d; border-radius: 6px; padding: 15px; margin-bottom: 15px;';
                 container.insertBefore(investigationEl, container.firstChild);
+            }
+            
+            // Throttle: solo actualizar cada 2 segundos si no es nueva y está ejecutando
+            if (!isNew && investigation.status === 'executing') {
+                const now = Date.now();
+                const lastUpdate = socUpdateThrottle[investigation.id] || 0;
+                if (now - lastUpdate < 2000) {
+                    return; // Saltar actualización si fue hace menos de 2 segundos
+                }
+                socUpdateThrottle[investigation.id] = now;
+            } else if (investigation.status === 'completed' || investigation.status === 'error') {
+                // Si está completada, actualizar siempre
+                delete socUpdateThrottle[investigation.id];
             }
             
             const statusColors = {
@@ -1205,9 +1221,17 @@
             // Actualizar estadísticas
             updateSOCStats();
             
-            // Auto-scroll si está ejecutando
-            if (investigation.status === 'executing' && investigation.currentCommand) {
+            // Auto-scroll solo si es nueva investigación o está completada (para ver el reporte)
+            if (isNew || investigation.status === 'completed') {
                 investigationEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            }
+            
+            // Si está completada y tiene reporte, expandir automáticamente el reporte
+            if (investigation.status === 'completed' && investigation.report) {
+                const reportDetails = investigationEl.querySelector('details');
+                if (reportDetails && !reportDetails.open) {
+                    reportDetails.open = true;
+                }
             }
         }
         
@@ -1892,7 +1916,14 @@
                 const threatEl = document.getElementById('threat');
                 threatEl.textContent = 'CRÍTICA';
                 threatEl.className = 'stats danger';
-                showToast('Procesos Sospechosos', `Se detectaron ${processes.length} proceso(s) PHP sospechoso(s)`, 'error');
+                
+                // Solo mostrar toast si el número de procesos cambió o han pasado más de 30 segundos
+                const now = Date.now();
+                if (processes.length !== lastProcessCount || !lastProcessToast || (now - lastProcessToast) > 30000) {
+                    showToast('Procesos Sospechosos', `Se detectaron ${processes.length} proceso(s) PHP sospechoso(s)`, 'error');
+                    lastProcessToast = now;
+                    lastProcessCount = processes.length;
+                }
             }
         }
         
@@ -1952,15 +1983,70 @@
             health: { cpu: 0, mem: 0 }
         };
         
+        // Tracking de toasts para evitar duplicados
+        let lastProcessToast = null;
+        let lastProcessCount = 0;
+        
         // Recopilar datos del sistema para enviar a la IA
         function collectSystemData() {
+            // Preparar datos detallados para la IA
+            const procesosDetallados = systemData.processes.map(p => ({
+                pid: p.pid,
+                comando: p.command,
+                cpu: p.cpu,
+                memoria: p.mem,
+                tiempo_ejecucion: p.time,
+                razon_sospechosa: p.reason,
+                usuario: p.user || 'desconocido'
+            }));
+            
+            const archivosDetallados = systemData.files.map(f => ({
+                ruta: f.filePath || f.detail?.split(' ')[0] || f.detail,
+                evento: f.events || 'MODIFY',
+                riesgo: f.risk || 'medium',
+                timestamp: f.ts || f.timestamp,
+                proceso_modificador: f.process ? {
+                    pid: f.process.pid,
+                    comando: f.process.command,
+                    usuario: f.process.user
+                } : null
+            }));
+            
+            const conexionesDetalladas = systemData.network.map(n => ({
+                conexion: n.detail || n,
+                timestamp: n.ts || n.timestamp,
+                riesgo: n.risk || 'medium'
+            }));
+            
+            const crontabsDetallados = systemData.crontab.map(c => ({
+                usuario: c.user,
+                tarea: c.cron,
+                timestamp: c.timestamp
+            }));
+            
             return {
-                procesos_sospechosos: systemData.processes,
-                conexiones_red: systemData.network.slice(0, 20), // Últimas 20
-                archivos_modificados: systemData.files.slice(0, 20), // Últimos 20
-                tareas_crontab: systemData.crontab,
-                sitios_web: systemData.sites.filter(s => s.status !== 'active'),
-                recursos_sistema: systemData.health,
+                resumen: {
+                    total_procesos_sospechosos: procesosDetallados.length,
+                    total_archivos_modificados: archivosDetallados.length,
+                    total_conexiones_sospechosas: conexionesDetalladas.length,
+                    total_tareas_crontab: crontabsDetallados.length,
+                    sitios_web_caidos: systemData.sites.filter(s => s.status !== 'active').length
+                },
+                procesos_sospechosos: procesosDetallados,
+                archivos_modificados: archivosDetallados,
+                conexiones_red: conexionesDetalladas,
+                tareas_crontab: crontabsDetallados,
+                sitios_web: systemData.sites.filter(s => s.status !== 'active').map(s => ({
+                    dominio: s.domain,
+                    estado: s.status,
+                    error: s.error,
+                    ultima_verificacion: s.lastCheck
+                })),
+                recursos_sistema: {
+                    cpu: systemData.health.cpu,
+                    memoria: systemData.health.mem,
+                    timestamp: systemData.health.ts
+                },
                 timestamp: new Date().toISOString()
             };
         }
@@ -1979,22 +2065,34 @@
             try {
                 const systemData = collectSystemData();
                 
-                const prompt = `Eres un experto en ciberseguridad. Analiza los siguientes datos de un sistema de monitoreo y proporciona:
+                const prompt = `Eres un experto en ciberseguridad y análisis forense. Analiza DETALLADAMENTE los siguientes datos de un sistema de monitoreo de seguridad y proporciona un análisis completo.
+
+IMPORTANTE: Lee cuidadosamente TODOS los datos proporcionados, especialmente:
+- Los procesos PHP sospechosos (PID, comandos, CPU, memoria, razones)
+- Los archivos modificados (rutas completas, eventos, procesos que los modificaron)
+- Las conexiones de red sospechosas
+- Las tareas de crontab sospechosas
 
 1. RECONOCIMIENTO DEL ATAQUE:
-   - Identifica qué tipo de amenaza o ataque está ocurriendo
-   - Explica los indicadores de compromiso (IOCs) detectados
-   - Describe el comportamiento sospechoso observado
+   - Identifica QUÉ TIPO DE AMENAZA o ataque está ocurriendo basándote en los datos reales
+   - Explica los INDICADORES DE COMPROMISO (IOCs) detectados específicamente:
+     * Procesos sospechosos y qué hacen
+     * Archivos modificados y qué significan
+     * Conexiones de red anómalas
+     * Tareas programadas maliciosas
+   - Describe el COMPORTAMIENTO SOSPECHOSO observado con detalles concretos
+   - Correlaciona los diferentes eventos para identificar patrones de ataque
 
 2. MITIGACIÓN DEL ATAQUE:
-   - Proporciona pasos específicos y ordenados para mitigar la amenaza
-   - Incluye comandos exactos cuando sea necesario
-   - Prioriza las acciones más críticas primero
+   - Proporciona pasos ESPECÍFICOS y ORDENADOS para mitigar la amenaza
+   - Incluye COMANDOS EXACTOS de Linux cuando sea necesario
+   - Prioriza las acciones MÁS CRÍTICAS primero
+   - Explica QUÉ hace cada comando antes de ejecutarlo
 
-Datos del sistema:
+Datos completos del sistema:
 ${JSON.stringify(systemData, null, 2)}
 
-Responde en español, de forma clara y estructurada.`;
+Responde en español, de forma clara, estructurada y DETALLADA. No uses información genérica, analiza los datos reales proporcionados.`;
                 
                 const response = await fetch('/api/ai/analyze', {
                     method: 'POST',

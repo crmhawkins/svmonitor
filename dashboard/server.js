@@ -428,25 +428,69 @@ function quarantineFile(filePath, investigationId, quarantinedArray) {
 // Generar reporte de investigación
 async function generateSOCReport(investigation) {
     try {
-        const reportPrompt = `Genera un reporte de investigación SOC profesional basado en estos hallazgos:
+        // Preparar datos detallados para el reporte
+        const findingsSummary = investigation.findings.map(f => ({
+            comando: f.command,
+            estado: f.status,
+            codigo_salida: f.exitCode,
+            salida_relevante: f.output ? f.output.substring(0, 1000) : '',
+            error: f.error || null,
+            timestamp: new Date(f.timestamp).toISOString()
+        }));
+        
+        const quarantinedSummary = investigation.quarantined.map(q => ({
+            archivo_original: q.original,
+            archivo_cuarentena: q.quarantined,
+            timestamp: new Date(q.timestamp).toISOString()
+        }));
+        
+        const reportPrompt = `Eres un analista SOC senior. Genera un reporte de investigación profesional y detallado basado en estos hallazgos:
 
 ID Investigación: ${investigation.id}
+Fecha: ${new Date(investigation.timestamp).toISOString()}
 Comandos ejecutados: ${investigation.commands.length}
-Hallazgos: ${investigation.findings.length}
+Hallazgos encontrados: ${investigation.findings.length}
 Archivos en cuarentena: ${investigation.quarantined.length}
 
-Hallazgos:
-${JSON.stringify(investigation.findings, null, 2)}
+DETALLES DE COMANDOS EJECUTADOS:
+${JSON.stringify(findingsSummary, null, 2)}
 
-Archivos en cuarentena:
-${JSON.stringify(investigation.quarantined, null, 2)}
+ARCHIVOS EN CUARENTENA:
+${JSON.stringify(quarantinedSummary, null, 2)}
 
-Genera un reporte estructurado con:
-1. Resumen ejecutivo
-2. Indicadores de compromiso (IOCs)
-3. Análisis de procesos
-4. Archivos sospechosos encontrados
-5. Recomendaciones de mitigación (sin ejecutar, solo recomendaciones)`;
+COMANDOS ORIGINALES GENERADOS:
+${investigation.commands.join('\n')}
+
+Genera un reporte ESTRUCTURADO Y DETALLADO con las siguientes secciones:
+
+1. RESUMEN EJECUTIVO
+   - Resumen de la investigación
+   - Nivel de amenaza identificado
+   - Hallazgos principales
+
+2. INDICADORES DE COMPROMISO (IOCs)
+   - Procesos sospechosos identificados
+   - Archivos maliciosos encontrados
+   - Conexiones de red anómalas
+   - Tareas programadas maliciosas
+
+3. ANÁLISIS DETALLADO
+   - Análisis de cada comando ejecutado y sus resultados
+   - Interpretación de los hallazgos
+   - Correlación entre eventos
+
+4. ARCHIVOS EN CUARENTENA
+   - Lista de archivos aislados
+   - Razón de la cuarentena
+   - Recomendaciones de análisis adicional
+
+5. RECOMENDACIONES DE MITIGACIÓN
+   - Pasos específicos para contener la amenaza
+   - Comandos de limpieza (NO ejecutar automáticamente)
+   - Medidas preventivas
+   - Monitoreo continuo recomendado
+
+Responde en español, de forma profesional y estructurada.`;
 
         const aiUrl = new URL(config.aiApi.url);
         const isHttps = aiUrl.protocol === 'https:';
@@ -482,21 +526,64 @@ Genera un reporte estructurado con:
                     const response = JSON.parse(data);
                     if (response.success && response.respuesta) {
                         investigation.report = response.respuesta;
+                        investigation.reportGenerated = true;
                         
                         // Guardar reporte en archivo
-                        const reportPath = path.join(config.soc.reportsPath, `report_${investigation.id}.txt`);
-                        fs.writeFileSync(reportPath, investigation.report);
+                        try {
+                            const reportPath = path.join(config.soc.reportsPath, `report_${investigation.id}.txt`);
+                            fs.writeFileSync(reportPath, investigation.report);
+                            console.log(`📄 Reporte SOC guardado: ${reportPath}`);
+                        } catch (fileError) {
+                            console.error('Error guardando reporte en archivo:', fileError);
+                        }
                         
+                        // Emitir actualización para mostrar el reporte
+                        io.emit('soc_investigation_update', investigation);
+                    } else {
+                        // Si la IA no respondió correctamente, generar reporte básico
+                        investigation.report = `REPORTE DE INVESTIGACIÓN SOC\n\n` +
+                            `ID: ${investigation.id}\n` +
+                            `Fecha: ${new Date(investigation.timestamp).toISOString()}\n` +
+                            `Estado: ${investigation.status}\n\n` +
+                            `Comandos ejecutados: ${investigation.commands.length}\n` +
+                            `Hallazgos: ${investigation.findings.length}\n` +
+                            `Archivos en cuarentena: ${investigation.quarantined.length}\n\n` +
+                            `RESULTADOS:\n${JSON.stringify(investigation.findings, null, 2)}\n\n` +
+                            `ARCHIVOS EN CUARENTENA:\n${JSON.stringify(investigation.quarantined, null, 2)}`;
+                        investigation.reportGenerated = true;
                         io.emit('soc_investigation_update', investigation);
                     }
                 } catch (error) {
                     console.error('Error generando reporte:', error);
+                    // Generar reporte básico en caso de error
+                    investigation.report = `REPORTE DE INVESTIGACIÓN SOC (Generado automáticamente)\n\n` +
+                        `ID: ${investigation.id}\n` +
+                        `Fecha: ${new Date(investigation.timestamp).toISOString()}\n` +
+                        `Error al generar reporte con IA: ${error.message}\n\n` +
+                        `Comandos ejecutados: ${investigation.commands.length}\n` +
+                        `Hallazgos: ${investigation.findings.length}\n` +
+                        `Archivos en cuarentena: ${investigation.quarantined.length}\n\n` +
+                        `RESULTADOS:\n${JSON.stringify(investigation.findings, null, 2)}`;
+                    investigation.reportGenerated = true;
+                    io.emit('soc_investigation_update', investigation);
                 }
             });
         });
         
         aiRequest.on('error', (error) => {
             console.error('Error al generar reporte:', error);
+            // Generar reporte básico en caso de error de conexión
+            investigation.report = `REPORTE DE INVESTIGACIÓN SOC (Generado automáticamente)\n\n` +
+                `ID: ${investigation.id}\n` +
+                `Fecha: ${new Date(investigation.timestamp).toISOString()}\n` +
+                `Error al conectar con IA: ${error.message}\n\n` +
+                `Comandos ejecutados: ${investigation.commands.length}\n` +
+                `Hallazgos: ${investigation.findings.length}\n` +
+                `Archivos en cuarentena: ${investigation.quarantined.length}\n\n` +
+                `RESULTADOS:\n${JSON.stringify(investigation.findings, null, 2)}\n\n` +
+                `ARCHIVOS EN CUARENTENA:\n${JSON.stringify(investigation.quarantined, null, 2)}`;
+            investigation.reportGenerated = true;
+            io.emit('soc_investigation_update', investigation);
         });
         
         aiRequest.write(requestData);
