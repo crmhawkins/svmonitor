@@ -155,8 +155,28 @@ async function runSOCInvestigation() {
             findings: [],
             commands: [],
             quarantined: [],
-            report: null
+            report: null,
+            logs: [] // Sistema de logs detallado
         };
+        
+        // Asegurar que logs existe
+        if (!investigation.logs) {
+            investigation.logs = [];
+        }
+        
+        // Función helper para agregar logs
+        function addLog(type, message, data = null) {
+            const logEntry = {
+                timestamp: Date.now(),
+                type: type, // 'info', 'analyze', 'ai_request', 'ai_response', 'command', 'read', 'modify', 'quarantine', 'error'
+                message: message,
+                data: data
+            };
+            investigation.logs.push(logEntry);
+            io.emit('soc_investigation_update', investigation);
+        }
+        
+        addLog('info', '🔍 Iniciando investigación automática SOC', { investigationId });
         
         socInvestigations.unshift(investigation);
         if (socInvestigations.length > 50) {
@@ -164,6 +184,11 @@ async function runSOCInvestigation() {
         }
         
         // Recopilar datos sospechosos recientes
+        addLog('analyze', '📊 Recopilando datos sospechosos del sistema', {
+            timeWindow: 'Últimos 5 minutos',
+            sources: ['processes', 'files', 'network', 'crontab']
+        });
+        
         const suspiciousData = {
             processes: logStorage.processes.filter(p => p.timestamp > Date.now() - 300000).slice(-20),
             files: logStorage.files.filter(f => (f.risk === 'high' || f.risk === 'critical') && f.timestamp > Date.now() - 300000).slice(-20),
@@ -171,7 +196,24 @@ async function runSOCInvestigation() {
             crontab: logStorage.crontab.filter(c => c.timestamp > Date.now() - 300000).slice(-10)
         };
         
+        addLog('analyze', '✅ Datos recopilados', {
+            processes: suspiciousData.processes.length,
+            files: suspiciousData.files.length,
+            network: suspiciousData.network.length,
+            crontab: suspiciousData.crontab.length
+        });
+        
         // Generar prompt para IA con comandos de investigación
+        addLog('ai_request', '🤖 Preparando solicitud a IA para generar comandos de investigación', {
+            model: config.aiApi.defaultModel,
+            dataSummary: {
+                processes: suspiciousData.processes.length,
+                files: suspiciousData.files.length,
+                network: suspiciousData.network.length,
+                crontab: suspiciousData.crontab.length
+            }
+        });
+        
         const investigationPrompt = `Eres un analista SOC experto. Analiza estos datos sospechosos y genera comandos de investigación específicos para Linux.
 
 IMPORTANTE: 
@@ -226,21 +268,44 @@ CMD: comando2
             
             aiResponse.on('end', () => {
                 try {
+                    addLog('ai_response', '📥 Respuesta recibida de IA', {
+                        responseLength: data.length
+                    });
+                    
                     const response = JSON.parse(data);
                     if (response.success && response.respuesta) {
+                        addLog('ai_response', '✅ Respuesta de IA procesada correctamente', {
+                            responseLength: response.respuesta.length
+                        });
+                        
                         // Extraer comandos de la respuesta
                         const commands = response.respuesta.split('\n')
                             .filter(line => line.trim().startsWith('CMD:'))
                             .map(line => line.replace('CMD:', '').trim())
                             .filter(cmd => cmd.length > 0);
                         
+                        addLog('ai_response', `📝 Comandos generados por IA: ${commands.length}`, {
+                            commands: commands
+                        });
+                        
                         investigation.commands = commands;
                         investigation.status = 'commands_generated';
                         
                         // Ejecutar comandos de investigación
                         executeInvestigationCommands(investigation, commands);
+                    } else {
+                        addLog('error', '❌ IA no generó respuesta válida', {
+                            response: response
+                        });
+                        investigation.status = 'error';
+                        investigation.report = 'Error al generar comandos de investigación';
+                        io.emit('soc_investigation_update', investigation);
                     }
                 } catch (error) {
+                    addLog('error', '❌ Error procesando respuesta de IA', {
+                        error: error.message,
+                        stack: error.stack
+                    });
                     console.error('Error procesando respuesta de IA:', error);
                     investigation.status = 'error';
                     investigation.report = 'Error al generar comandos de investigación';
@@ -250,10 +315,19 @@ CMD: comando2
         });
         
         aiRequest.on('error', (error) => {
+            addLog('error', '❌ Error al conectar con IA', {
+                error: error.message,
+                code: error.code
+            });
             console.error('Error en investigación SOC:', error);
             investigation.status = 'error';
             investigation.report = 'Error al conectar con IA';
             io.emit('soc_investigation_update', investigation);
+        });
+        
+        addLog('ai_request', '📤 Enviando solicitud a IA', {
+            url: config.aiApi.url,
+            promptLength: investigationPrompt.length
         });
         
         aiRequest.write(requestData);
@@ -268,6 +342,22 @@ CMD: comando2
 
 // Ejecutar comandos de investigación
 async function executeInvestigationCommands(investigation, commands) {
+    // Función helper para agregar logs (reutilizar si existe, sino crear nueva)
+    const addLog = investigation.logs ? (type, message, data = null) => {
+        const logEntry = {
+            timestamp: Date.now(),
+            type: type,
+            message: message,
+            data: data
+        };
+        investigation.logs.push(logEntry);
+        io.emit('soc_investigation_update', investigation);
+    } : () => {}; // Si no hay sistema de logs, función vacía
+    
+    addLog('info', '⚙️ Iniciando ejecución de comandos de investigación', {
+        totalCommands: commands.length
+    });
+    
     investigation.status = 'executing';
     investigation.currentCommand = null;
     investigation.currentCommandIndex = 0;
@@ -281,6 +371,12 @@ async function executeInvestigationCommands(investigation, commands) {
     // Ejecutar comandos secuencialmente para mostrar progreso
     for (let i = 0; i < commands.length; i++) {
         const command = commands[i];
+        
+        addLog('command', `🔧 Ejecutando comando ${i + 1}/${commands.length}`, {
+            command: command,
+            index: i + 1,
+            total: commands.length
+        });
         
         // Actualizar estado: comando actual
         investigation.currentCommand = command;
@@ -303,8 +399,16 @@ async function executeInvestigationCommands(investigation, commands) {
             // Capturar salida estándar
             if (childProcess.stdout) {
                 childProcess.stdout.on('data', (data) => {
-                    output += data.toString();
+                    const chunk = data.toString();
+                    output += chunk;
                     investigation.currentCommandOutput = output;
+                    
+                    addLog('read', `📖 Leyendo salida del comando (${chunk.length} bytes)`, {
+                        command: command,
+                        chunkLength: chunk.length,
+                        totalOutputLength: output.length
+                    });
+                    
                     // Emitir actualización en tiempo real
                     io.emit('soc_investigation_update', investigation);
                 });
@@ -313,13 +417,28 @@ async function executeInvestigationCommands(investigation, commands) {
             // Capturar errores
             if (childProcess.stderr) {
                 childProcess.stderr.on('data', (data) => {
-                    errorOutput += data.toString();
+                    const chunk = data.toString();
+                    errorOutput += chunk;
                     investigation.currentCommandOutput = output + '\n[ERROR]\n' + errorOutput;
+                    
+                    addLog('read', `⚠️ Leyendo errores del comando (${chunk.length} bytes)`, {
+                        command: command,
+                        errorChunk: chunk.substring(0, 200) // Primeros 200 caracteres
+                    });
+                    
                     io.emit('soc_investigation_update', investigation);
                 });
             }
             
             childProcess.on('close', (code) => {
+                addLog('command', `✅ Comando ${i + 1} finalizado`, {
+                    command: command,
+                    exitCode: code,
+                    outputLength: output.length,
+                    errorLength: errorOutput.length,
+                    status: code === 0 ? 'completado' : 'error'
+                });
+                
                 const commandResult = {
                     command: command,
                     index: i + 1,
@@ -334,9 +453,18 @@ async function executeInvestigationCommands(investigation, commands) {
                 investigation.commandProgress.push(commandResult);
                 
                 // Buscar binarios/ejecutables en la salida
+                addLog('analyze', `🔍 Analizando salida del comando en busca de binarios/ejecutables`, {
+                    command: command,
+                    outputLength: output.length
+                });
+                
                 const allOutput = output + errorOutput;
                 const binaryMatches = allOutput.match(/\/[^\s]+\s*$/gm) || 
                                      allOutput.match(/\/[a-zA-Z0-9\/\._-]+/g) || [];
+                
+                addLog('analyze', `📋 Binarios potenciales encontrados: ${binaryMatches.length}`, {
+                    matches: binaryMatches.slice(0, 10) // Primeros 10
+                });
                 
                 if (binaryMatches.length > 0) {
                     binaryMatches.forEach(binaryPath => {
@@ -345,11 +473,18 @@ async function executeInvestigationCommands(investigation, commands) {
                             try {
                                 const stats = fs.statSync(cleanPath);
                                 if (stats.isFile() && (stats.mode & parseInt('111', 8))) {
+                                    addLog('quarantine', `🔒 Archivo ejecutable detectado, poniendo en cuarentena`, {
+                                        file: cleanPath,
+                                        size: stats.size,
+                                        mode: stats.mode.toString(8)
+                                    });
                                     // Es ejecutable, copiar a cuarentena
                                     quarantineFile(cleanPath, investigation.id, quarantined);
                                 }
                             } catch (err) {
-                                // Ignorar errores al verificar archivo
+                                addLog('error', `❌ Error al verificar archivo: ${cleanPath}`, {
+                                    error: err.message
+                                });
                             }
                         }
                     });
@@ -366,6 +501,12 @@ async function executeInvestigationCommands(investigation, commands) {
             });
             
             childProcess.on('error', (error) => {
+                addLog('error', `❌ Error al ejecutar comando`, {
+                    command: command,
+                    error: error.message,
+                    code: error.code
+                });
+                
                 const commandResult = {
                     command: command,
                     index: i + 1,
@@ -395,6 +536,13 @@ async function executeInvestigationCommands(investigation, commands) {
     investigation.quarantined = quarantined;
     investigation.status = 'completed';
     
+    addLog('info', '✅ Ejecución de comandos completada', {
+        totalCommands: commands.length,
+        successful: findings.filter(f => f.status === 'completado').length,
+        failed: findings.filter(f => f.status === 'error').length,
+        quarantined: quarantined.length
+    });
+    
     io.emit('soc_investigation_update', investigation);
     
     // Generar reporte final
@@ -407,26 +555,71 @@ function quarantineFile(filePath, investigationId, quarantinedArray) {
         const fileName = path.basename(filePath);
         const quarantinePath = path.join(config.soc.quarantinePath, `${investigationId}_${Date.now()}_${fileName}`);
         
+        // Obtener información del archivo original
+        const stats = fs.statSync(filePath);
+        
         // Copiar archivo a cuarentena
         fs.copyFileSync(filePath, quarantinePath);
         
         // Cambiar permisos para que no sea ejecutable
         fs.chmodSync(quarantinePath, 0o644);
         
-        quarantinedArray.push({
+        const quarantineInfo = {
             original: filePath,
             quarantined: quarantinePath,
-            timestamp: Date.now()
-        });
+            timestamp: Date.now(),
+            size: stats.size,
+            originalMode: stats.mode.toString(8)
+        };
+        
+        quarantinedArray.push(quarantineInfo);
+        
+        // Agregar log si la investigación tiene sistema de logs
+        const investigation = socInvestigations.find(inv => inv.id === investigationId);
+        if (investigation && investigation.logs) {
+            const addLog = (type, message, data = null) => {
+                investigation.logs.push({
+                    timestamp: Date.now(),
+                    type: type,
+                    message: message,
+                    data: data
+                });
+            };
+            addLog('modify', `🔒 Archivo puesto en cuarentena`, quarantineInfo);
+        }
         
         console.log(`🔒 Archivo en cuarentena: ${filePath} -> ${quarantinePath}`);
     } catch (error) {
         console.error(`Error al poner en cuarentena ${filePath}:`, error);
+        const investigation = socInvestigations.find(inv => inv.id === investigationId);
+        if (investigation && investigation.logs) {
+            investigation.logs.push({
+                timestamp: Date.now(),
+                type: 'error',
+                message: `❌ Error al poner archivo en cuarentena`,
+                data: { filePath, error: error.message }
+            });
+        }
     }
 }
 
 // Generar reporte de investigación
 async function generateSOCReport(investigation) {
+    const addLog = investigation.logs ? (type, message, data = null) => {
+        investigation.logs.push({
+            timestamp: Date.now(),
+            type: type,
+            message: message,
+            data: data
+        });
+        io.emit('soc_investigation_update', investigation);
+    } : () => {};
+    
+    addLog('info', '📄 Iniciando generación de reporte final', {
+        findings: investigation.findings.length,
+        quarantined: investigation.quarantined.length
+    });
+    
     try {
         // Preparar datos detallados para el reporte
         const findingsSummary = investigation.findings.map(f => ({
@@ -523,23 +716,56 @@ Responde en español, de forma profesional y estructurada.`;
             
             aiResponse.on('end', () => {
                 try {
+                    addLog('ai_response', '📥 Respuesta de IA para reporte recibida', {
+                        responseLength: data.length
+                    });
+                    
                     const response = JSON.parse(data);
                     if (response.success && response.respuesta) {
                         investigation.report = response.respuesta;
                         investigation.reportGenerated = true;
                         
+                        addLog('modify', '📄 Reporte generado por IA', {
+                            reportLength: response.respuesta.length
+                        });
+                        
                         // Guardar reporte en archivo
                         try {
                             const reportPath = path.join(config.soc.reportsPath, `report_${investigation.id}.txt`);
                             fs.writeFileSync(reportPath, investigation.report);
+                            
+                            addLog('modify', '💾 Reporte guardado en archivo', {
+                                path: reportPath
+                            });
+                            
                             console.log(`📄 Reporte SOC guardado: ${reportPath}`);
                         } catch (fileError) {
+                            addLog('error', '❌ Error guardando reporte en archivo', {
+                                error: fileError.message
+                            });
                             console.error('Error guardando reporte en archivo:', fileError);
                         }
+                        
+                        addLog('info', '✅ Reporte generado y guardado exitosamente', {
+                            reportLength: investigation.report.length
+                        });
+                        
+                        // Log final de resumen
+                        addLog('info', '🎯 Investigación SOC completada exitosamente', {
+                            totalLogs: investigation.logs.length,
+                            totalCommands: investigation.commands.length,
+                            totalFindings: investigation.findings.length,
+                            totalQuarantined: investigation.quarantined.length,
+                            reportGenerated: true,
+                            duration: Math.round((Date.now() - investigation.timestamp) / 1000) + ' segundos'
+                        });
                         
                         // Emitir actualización para mostrar el reporte
                         io.emit('soc_investigation_update', investigation);
                     } else {
+                        addLog('error', '❌ IA no generó reporte válido', {
+                            response: response
+                        });
                         // Si la IA no respondió correctamente, generar reporte básico
                         investigation.report = `REPORTE DE INVESTIGACIÓN SOC\n\n` +
                             `ID: ${investigation.id}\n` +
@@ -551,9 +777,14 @@ Responde en español, de forma profesional y estructurada.`;
                             `RESULTADOS:\n${JSON.stringify(investigation.findings, null, 2)}\n\n` +
                             `ARCHIVOS EN CUARENTENA:\n${JSON.stringify(investigation.quarantined, null, 2)}`;
                         investigation.reportGenerated = true;
+                        addLog('info', '✅ Reporte básico generado automáticamente');
                         io.emit('soc_investigation_update', investigation);
                     }
                 } catch (error) {
+                    addLog('error', '❌ Error al procesar respuesta de IA para reporte', {
+                        error: error.message,
+                        stack: error.stack
+                    });
                     console.error('Error generando reporte:', error);
                     // Generar reporte básico en caso de error
                     investigation.report = `REPORTE DE INVESTIGACIÓN SOC (Generado automáticamente)\n\n` +
@@ -565,6 +796,7 @@ Responde en español, de forma profesional y estructurada.`;
                         `Archivos en cuarentena: ${investigation.quarantined.length}\n\n` +
                         `RESULTADOS:\n${JSON.stringify(investigation.findings, null, 2)}`;
                     investigation.reportGenerated = true;
+                    addLog('info', '✅ Reporte básico generado tras error');
                     io.emit('soc_investigation_update', investigation);
                 }
             });

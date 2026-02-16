@@ -1216,6 +1216,64 @@
                         </div>
                     </details>
                 ` : ''}
+                
+                ${investigation.logs && investigation.logs.length > 0 ? `
+                    <details style="margin-top: 10px;">
+                        <summary style="color: #ffa657; cursor: pointer; font-weight: bold; font-size: 1rem;">
+                            📋 Ver Logs Detallados (${investigation.logs.length} entradas)
+                        </summary>
+                        <div style="background: #161b22; padding: 15px; border-radius: 4px; margin-top: 10px; max-height: 600px; overflow-y: auto;">
+                            ${investigation.logs.map((log, idx) => {
+                                const logTime = new Date(log.timestamp).toLocaleTimeString();
+                                const logColors = {
+                                    'info': '#58a6ff',
+                                    'analyze': '#ffa657',
+                                    'ai_request': '#9b59b6',
+                                    'ai_response': '#9b59b6',
+                                    'command': '#3fb950',
+                                    'read': '#58a6ff',
+                                    'modify': '#ffa657',
+                                    'quarantine': '#da3633',
+                                    'error': '#da3633'
+                                };
+                                const logIcons = {
+                                    'info': 'ℹ️',
+                                    'analyze': '🔍',
+                                    'ai_request': '🤖',
+                                    'ai_response': '🤖',
+                                    'command': '⚙️',
+                                    'read': '📖',
+                                    'modify': '✏️',
+                                    'quarantine': '🔒',
+                                    'error': '❌'
+                                };
+                                const logColor = logColors[log.type] || '#8b949e';
+                                const logIcon = logIcons[log.type] || '•';
+                                
+                                return `
+                                    <div style="background: #0d1117; padding: 12px; border-radius: 4px; margin-bottom: 8px; border-left: 3px solid ${logColor};">
+                                        <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 5px;">
+                                            <div style="color: ${logColor}; font-weight: bold; font-size: 0.9rem;">
+                                                ${logIcon} ${log.message}
+                                            </div>
+                                            <div style="color: #8b949e; font-size: 0.75rem; margin-left: 10px;">
+                                                ${logTime}
+                                            </div>
+                                        </div>
+                                        ${log.data ? `
+                                            <details style="margin-top: 5px;">
+                                                <summary style="color: #8b949e; cursor: pointer; font-size: 0.8rem;">Ver detalles</summary>
+                                                <div style="background: rgba(0,0,0,0.3); padding: 8px; border-radius: 4px; margin-top: 5px; font-family: monospace; font-size: 0.75rem; color: #c9d1d9; white-space: pre-wrap; word-break: break-all; max-height: 200px; overflow-y: auto;">
+                                                    ${JSON.stringify(log.data, null, 2)}
+                                                </div>
+                                            </details>
+                                        ` : ''}
+                                    </div>
+                                `;
+                            }).join('')}
+                        </div>
+                    </details>
+                ` : ''}
             `;
             
             // Actualizar estadísticas
@@ -1806,6 +1864,8 @@
         
         function updateSites(sites) {
             sitesData = sites;
+            // Actualizar systemData para la IA
+            systemData.sites = sites || [];
             const grid = document.getElementById('sitesGrid');
             
             // Limpiar grid
@@ -2112,17 +2172,46 @@
             const loadingMsg = addAIMessage('assistant', '🔍 Analizando datos del sistema...', true);
             
             try {
-                const systemData = collectSystemData();
+                const collectedData = collectSystemData();
                 
-                // Validar que hay datos antes de analizar
-                const hasData = (Array.isArray(systemData.processes) && systemData.processes.length > 0) || 
-                               (Array.isArray(systemData.files) && systemData.files.length > 0) || 
-                               (Array.isArray(systemData.network) && systemData.network.length > 0) || 
-                               (Array.isArray(systemData.crontab) && systemData.crontab.length > 0);
+                // Validar que hay datos antes de analizar - usar los datos recopilados
+                const hasData = collectedData.resumen.total_procesos_sospechosos > 0 || 
+                               collectedData.resumen.total_archivos_modificados > 0 || 
+                               collectedData.resumen.total_conexiones_sospechosas > 0 || 
+                               collectedData.resumen.total_tareas_crontab > 0;
+                
+                // Debug: mostrar qué datos hay
+                console.log('🔍 Datos recopilados para IA:', {
+                    procesos: collectedData.resumen.total_procesos_sospechosos,
+                    archivos: collectedData.resumen.total_archivos_modificados,
+                    red: collectedData.resumen.total_conexiones_sospechosas,
+                    crontab: collectedData.resumen.total_tareas_crontab,
+                    hasData: hasData,
+                    datosCompletos: {
+                        procesosArray: collectedData.procesos_sospechosos.length,
+                        archivosArray: collectedData.archivos_modificados.length,
+                        redArray: collectedData.conexiones_red.length,
+                        crontabArray: collectedData.tareas_crontab.length
+                    },
+                    systemDataOriginal: {
+                        processes: systemData.processes.length,
+                        files: systemData.files.length,
+                        network: systemData.network.length,
+                        crontab: systemData.crontab.length
+                    }
+                });
                 
                 if (!hasData) {
                     loadingMsg.remove();
-                    addAIMessage('assistant', '⚠️ No hay datos sospechosos para analizar en este momento. El sistema está limpio o no se han detectado eventos recientes.');
+                    addAIMessage('assistant', `⚠️ No hay datos sospechosos para analizar en este momento. 
+
+Estadísticas actuales:
+- Procesos sospechosos: ${collectedData.resumen.total_procesos_sospechosos}
+- Archivos modificados: ${collectedData.resumen.total_archivos_modificados}
+- Conexiones de red: ${collectedData.resumen.total_conexiones_sospechosas}
+- Tareas crontab: ${collectedData.resumen.total_tareas_crontab}
+
+El sistema está limpio o no se han detectado eventos recientes.`);
                     return;
                 }
                 
@@ -2136,32 +2225,32 @@ REGLAS CRÍTICAS:
 5. Correlaciona los eventos para identificar patrones de ataque
 
 DATOS DEL SISTEMA A ANALIZAR:
-${JSON.stringify(systemData, null, 2)}
+${JSON.stringify(collectedData, null, 2)}
 
 INSTRUCCIONES DE ANÁLISIS:
 
 1. RECONOCIMIENTO DEL ATAQUE:
    Analiza CADA elemento en los arrays proporcionados:
    
-   - PROCESOS SOSPECHOSOS (${Array.isArray(systemData.processes) ? systemData.processes.length : 0} encontrados):
+   - PROCESOS SOSPECHOSOS (${collectedData.resumen.total_procesos_sospechosos} encontrados):
      * Para CADA proceso, identifica: PID, comando ejecutado, razón de sospecha, uso de recursos
      * Explica QUÉ hace cada comando sospechoso
      * Identifica si hay procesos relacionados o patrones
      * Determina el tipo de amenaza (backdoor, miner, bot, etc.)
    
-   - ARCHIVOS MODIFICADOS (${Array.isArray(systemData.files) ? systemData.files.length : 0} encontrados):
+   - ARCHIVOS MODIFICADOS (${collectedData.resumen.total_archivos_modificados} encontrados):
      * Para CADA archivo, analiza: ruta completa, tipo de evento (CREATE/MODIFY/DELETE), nivel de riesgo
      * Identifica el proceso que modificó cada archivo
      * Determina si las rutas son sospechosas (/tmp, /var/tmp, wp-content/uploads, etc.)
      * Explica qué tipo de ataque podría estar relacionado
    
-   - CONEXIONES DE RED (${Array.isArray(systemData.network) ? systemData.network.length : 0} encontradas):
+   - CONEXIONES DE RED (${collectedData.resumen.total_conexiones_sospechosas} encontradas):
      * Para CADA conexión, analiza: dirección IP, puerto, protocolo, estado
      * Identifica conexiones salientes desde PHP/Python/Perl
      * Determina si son conexiones legítimas o maliciosas
      * Correlaciona con procesos y archivos
    
-   - TAREAS CRONTAB (${Array.isArray(systemData.crontab) ? systemData.crontab.length : 0} encontradas):
+   - TAREAS CRONTAB (${collectedData.resumen.total_tareas_crontab} encontradas):
      * Para CADA tarea, analiza: usuario, comando programado, frecuencia
      * Identifica tareas sospechosas o no autorizadas
      * Explica qué hace cada tarea y por qué es sospechosa
@@ -2194,6 +2283,16 @@ Responde en español, de forma estructurada y DETALLADA.`;
                         prompt: prompt,
                         modelo: model
                     })
+                });
+                
+                console.log('Enviando a IA:', {
+                    promptLength: prompt.length,
+                    datos: {
+                        procesos: collectedData.procesos_sospechosos.length,
+                        archivos: collectedData.archivos_modificados.length,
+                        red: collectedData.conexiones_red.length,
+                        crontab: collectedData.tareas_crontab.length
+                    }
                 });
                 
                 const data = await response.json();
