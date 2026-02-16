@@ -22,6 +22,10 @@ module.exports = {
     processCheckInterval: 5000,
     fileScanInterval: 30000, // Escaneo de firmas cada 30 segundos
     crontabCheckInterval: 60000, // Crontab cada minuto
+    siteCheckInterval: 60000, // Monitoreo de sitios cada minuto
+    
+    // Ruta de sitios web (Plesk)
+    vhostsPath: process.env.VHOSTS_PATH || '/var/www/vhosts',
     
     // Configuración de Socket.IO
     socketIO: {

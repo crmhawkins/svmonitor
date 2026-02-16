@@ -1,6 +1,9 @@
 ﻿const { exec, spawn } = require('child_process');
+const http = require('http');
+const https = require('https');
 const io = require('socket.io-client');
 const os = require('os');
+const fs = require('fs');
 const config = require('../config');
 
 // Detectar sistema operativo
@@ -29,7 +32,9 @@ let networkInterval = null;
 let processInterval = null;
 let fileScanInterval = null;
 let crontabInterval = null;
+let siteCheckInterval = null;
 let fileWatcher = null;
+let discoveredSites = new Map(); // Cache de sitios descubiertos
 
 // Manejo de conexión
 socket.on('connect', () => {
@@ -288,6 +293,18 @@ function startMonitoring() {
         }, config.crontabCheckInterval);
     }
 
+    // Monitoreo de sitios web
+    if (isLinux) {
+        // Descubrir sitios al inicio
+        discoverSites();
+        
+        // Monitorear sitios cada minuto
+        siteCheckInterval = setInterval(() => {
+            discoverSites();
+            checkAllSites();
+        }, config.siteCheckInterval);
+    }
+
     // Monitor de archivos (solo Linux)
     if (isLinux) {
         const watchPath = process.env.WATCH_PATH || '/var/www/vhosts';
@@ -483,6 +500,183 @@ function assessFileRisk(filePath, events) {
     return 'low';
 }
 
+// Descubrir sitios web en /var/www/vhosts/
+function discoverSites() {
+    try {
+        const vhostsPath = config.vhostsPath;
+        
+        if (!fs.existsSync(vhostsPath)) {
+            console.warn(`⚠️ Ruta de vhosts no encontrada: ${vhostsPath}`);
+            return;
+        }
+        
+        const dirs = fs.readdirSync(vhostsPath, { withFileTypes: true });
+        
+        dirs.forEach(dirent => {
+            if (dirent.isDirectory()) {
+                const domain = dirent.name;
+                
+                // Ignorar directorios del sistema
+                if (domain.startsWith('.') || domain === 'system' || domain === 'default') {
+                    return;
+                }
+                
+                // Verificar si existe httpdocs o public_html
+                const httpdocsPath = `${vhostsPath}/${domain}/httpdocs`;
+                const publicHtmlPath = `${vhostsPath}/${domain}/public_html`;
+                
+                if (fs.existsSync(httpdocsPath) || fs.existsSync(publicHtmlPath)) {
+                    // Construir URL (asumir HTTP por defecto, se probará HTTPS también)
+                    if (!discoveredSites.has(domain)) {
+                        discoveredSites.set(domain, {
+                            domain: domain,
+                            url: `http://${domain}`,
+                            status: 'unknown',
+                            lastCheck: null,
+                            responseTime: null,
+                            statusCode: null,
+                            error: null
+                        });
+                        console.log(`🌐 Sitio descubierto: ${domain}`);
+                    }
+                }
+            }
+        });
+    } catch (error) {
+        console.error('❌ Error al descubrir sitios:', error);
+    }
+}
+
+// Verificar estado de un sitio web
+function checkSite(site) {
+    return new Promise((resolve) => {
+        const url = new URL(site.url);
+        const isHttps = url.protocol === 'https:';
+        const client = isHttps ? https : http;
+        
+        const options = {
+            hostname: url.hostname,
+            port: url.port || (isHttps ? 443 : 80),
+            path: url.pathname || '/',
+            method: 'GET',
+            timeout: 10000,
+            headers: {
+                'User-Agent': 'Sentinel-Monitor/1.0'
+            },
+            rejectUnauthorized: false // Permitir certificados autofirmados
+        };
+        
+        const startTime = Date.now();
+        
+        const req = client.request(options, (res) => {
+            const responseTime = Date.now() - startTime;
+            let data = '';
+            
+            res.on('data', (chunk) => {
+                data += chunk;
+            });
+            
+            res.on('end', () => {
+                const statusCode = res.statusCode;
+                let status = 'active';
+                let error = null;
+                
+                if (statusCode >= 200 && statusCode < 400) {
+                    status = 'active';
+                } else if (statusCode >= 400 && statusCode < 500) {
+                    status = 'error';
+                    error = `Error ${statusCode}`;
+                } else if (statusCode >= 500) {
+                    status = 'down';
+                    error = `Error del servidor ${statusCode}`;
+                }
+                
+                resolve({
+                    ...site,
+                    status,
+                    statusCode,
+                    responseTime,
+                    error,
+                    lastCheck: Date.now()
+                });
+            });
+        });
+        
+        req.on('error', (err) => {
+            const responseTime = Date.now() - startTime;
+            
+            // Si falla HTTP, intentar HTTPS
+            if (!isHttps && !site.triedHttps) {
+                site.triedHttps = true;
+                site.url = site.url.replace('http://', 'https://');
+                checkSite(site).then(resolve);
+                return;
+            }
+            
+            resolve({
+                ...site,
+                status: 'down',
+                statusCode: null,
+                responseTime,
+                error: err.message,
+                lastCheck: Date.now()
+            });
+        });
+        
+        req.on('timeout', () => {
+            req.destroy();
+            resolve({
+                ...site,
+                status: 'down',
+                statusCode: null,
+                responseTime: 10000,
+                error: 'Timeout',
+                lastCheck: Date.now()
+            });
+        });
+        
+        req.end();
+    });
+}
+
+// Verificar todos los sitios descubiertos
+async function checkAllSites() {
+    if (discoveredSites.size === 0) {
+        return;
+    }
+    
+    const sites = Array.from(discoveredSites.values());
+    const results = [];
+    
+    // Verificar sitios en paralelo (máximo 5 a la vez para no sobrecargar)
+    const batchSize = 5;
+    for (let i = 0; i < sites.length; i += batchSize) {
+        const batch = sites.slice(i, i + batchSize);
+        const batchResults = await Promise.all(batch.map(site => checkSite(site)));
+        results.push(...batchResults);
+    }
+    
+    // Actualizar cache y enviar resultados
+    results.forEach(result => {
+        discoveredSites.set(result.domain, result);
+    });
+    
+    // Enviar estado de todos los sitios
+    socket.emit('sites_status', results);
+    
+    // Enviar alertas si hay sitios caídos o con errores
+    const downSites = results.filter(s => s.status === 'down');
+    const errorSites = results.filter(s => s.status === 'error');
+    
+    if (downSites.length > 0 || errorSites.length > 0) {
+        socket.emit('sites_alert', {
+            down: downSites,
+            errors: errorSites,
+            timestamp: Date.now()
+        });
+    }
+}
+
 // Detener monitoreo
 function stopMonitoring() {
     if (healthInterval) {
@@ -504,6 +698,10 @@ function stopMonitoring() {
     if (crontabInterval) {
         clearInterval(crontabInterval);
         crontabInterval = null;
+    }
+    if (siteCheckInterval) {
+        clearInterval(siteCheckInterval);
+        siteCheckInterval = null;
     }
     if (fileWatcher) {
         fileWatcher.kill();

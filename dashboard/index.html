@@ -413,6 +413,278 @@
             word-break: break-all;
             margin-top: 4px;
         }
+        
+        /* Sistema de pestañas */
+        .tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            border-bottom: 2px solid #30363d;
+            padding-bottom: 0;
+        }
+        
+        .tab {
+            padding: 12px 24px;
+            background: transparent;
+            border: none;
+            border-bottom: 3px solid transparent;
+            color: #8b949e;
+            cursor: pointer;
+            font-size: 1rem;
+            font-weight: 500;
+            transition: all 0.3s;
+            position: relative;
+            top: 2px;
+        }
+        
+        .tab:hover {
+            color: #c9d1d9;
+        }
+        
+        .tab.active {
+            color: #58a6ff;
+            border-bottom-color: #58a6ff;
+        }
+        
+        .tab-content {
+            display: none;
+        }
+        
+        .tab-content.active {
+            display: block;
+        }
+        
+        /* Sistema de notificaciones toast */
+        .toast-container {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 10000;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            max-width: 400px;
+        }
+        
+        .toast {
+            background: #161b22;
+            border: 1px solid #30363d;
+            border-left: 4px solid;
+            border-radius: 8px;
+            padding: 16px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+            animation: slideIn 0.3s ease-out;
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+        }
+        
+        .toast.success {
+            border-left-color: #3fb950;
+        }
+        
+        .toast.warning {
+            border-left-color: #ffa657;
+        }
+        
+        .toast.error {
+            border-left-color: #da3633;
+        }
+        
+        .toast.info {
+            border-left-color: #58a6ff;
+        }
+        
+        .toast-icon {
+            font-size: 1.5rem;
+            flex-shrink: 0;
+        }
+        
+        .toast-content {
+            flex: 1;
+        }
+        
+        .toast-title {
+            font-weight: bold;
+            margin-bottom: 4px;
+            color: #c9d1d9;
+        }
+        
+        .toast-message {
+            font-size: 0.9rem;
+            color: #8b949e;
+        }
+        
+        .toast-close {
+            background: none;
+            border: none;
+            color: #8b949e;
+            cursor: pointer;
+            font-size: 1.2rem;
+            padding: 0;
+            width: 20px;
+            height: 20px;
+            flex-shrink: 0;
+        }
+        
+        .toast-close:hover {
+            color: #c9d1d9;
+        }
+        
+        @keyframes slideIn {
+            from {
+                transform: translateX(400px);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+        
+        /* Sección de sitios web */
+        .sites-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+        
+        .site-card {
+            background: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 8px;
+            padding: 20px;
+            transition: all 0.3s;
+        }
+        
+        .site-card:hover {
+            border-color: #58a6ff;
+            transform: translateY(-2px);
+        }
+        
+        .site-card.active {
+            border-left: 4px solid #3fb950;
+        }
+        
+        .site-card.error {
+            border-left: 4px solid #ffa657;
+        }
+        
+        .site-card.down {
+            border-left: 4px solid #da3633;
+        }
+        
+        .site-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+        
+        .site-domain {
+            font-size: 1.1rem;
+            font-weight: bold;
+            color: #c9d1d9;
+            word-break: break-all;
+        }
+        
+        .site-status {
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 0.75rem;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+        
+        .site-status.active {
+            background: rgba(63, 185, 80, 0.2);
+            color: #3fb950;
+        }
+        
+        .site-status.error {
+            background: rgba(255, 166, 87, 0.2);
+            color: #ffa657;
+        }
+        
+        .site-status.down {
+            background: rgba(218, 54, 51, 0.2);
+            color: #da3633;
+        }
+        
+        .site-info {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            font-size: 0.9rem;
+            color: #8b949e;
+        }
+        
+        .site-info-item {
+            display: flex;
+            justify-content: space-between;
+        }
+        
+        .site-info-label {
+            color: #8b949e;
+        }
+        
+        .site-info-value {
+            color: #c9d1d9;
+            font-weight: 500;
+        }
+        
+        .sites-summary {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+        
+        .summary-card {
+            background: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 8px;
+            padding: 20px;
+            text-align: center;
+        }
+        
+        .summary-card.active {
+            border-top: 3px solid #3fb950;
+        }
+        
+        .summary-card.error {
+            border-top: 3px solid #ffa657;
+        }
+        
+        .summary-card.down {
+            border-top: 3px solid #da3633;
+        }
+        
+        .summary-number {
+            font-size: 2.5rem;
+            font-weight: bold;
+            margin: 10px 0;
+        }
+        
+        .summary-card.active .summary-number {
+            color: #3fb950;
+        }
+        
+        .summary-card.error .summary-number {
+            color: #ffa657;
+        }
+        
+        .summary-card.down .summary-number {
+            color: #da3633;
+        }
+        
+        .summary-label {
+            color: #8b949e;
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
     </style>
 </head>
 <body>
@@ -424,8 +696,18 @@
         </div>
     </div>
     
-    <div id="alertContainer"></div>
+    <!-- Contenedor de notificaciones toast -->
+    <div class="toast-container" id="toastContainer"></div>
     
+    <!-- Sistema de pestañas -->
+    <div class="tabs">
+        <button class="tab active" onclick="switchTab('monitoring')">📊 Monitoreo</button>
+        <button class="tab" onclick="switchTab('sites')">🌐 Sitios Web</button>
+        <button class="tab" onclick="switchTab('security')">🔒 Seguridad</button>
+    </div>
+    
+    <!-- Pestaña: Monitoreo -->
+    <div id="tab-monitoring" class="tab-content active">
     <div class="grid">
         <div class="card">
             <div class="card-title">CPU</div>
@@ -454,14 +736,53 @@
         </div>
     </div>
     
-    <div class="console-container" style="margin-top: 20px;">
-        <div class="console-wrapper">
-            <h3>⚙️ PROCESOS PHP SOSPECHOSOS</h3>
-            <div id="process" class="console"><span class="empty-state">No se detectaron procesos sospechosos...</span></div>
+        <div class="console-container" style="margin-top: 20px;">
+            <div class="console-wrapper">
+                <h3>⚙️ PROCESOS PHP SOSPECHOSOS</h3>
+                <div id="process" class="console"><span class="empty-state">No se detectaron procesos sospechosos...</span></div>
+            </div>
+            <div class="console-wrapper">
+                <h3>⏰ CRONTAB</h3>
+                <div id="crontab" class="console"><span class="empty-state">No se detectaron tareas sospechosas...</span></div>
+            </div>
         </div>
-        <div class="console-wrapper">
-            <h3>⏰ CRONTAB</h3>
-            <div id="crontab" class="console"><span class="empty-state">No se detectaron tareas sospechosas...</span></div>
+    </div>
+    
+    <!-- Pestaña: Sitios Web -->
+    <div id="tab-sites" class="tab-content">
+        <div class="sites-summary">
+            <div class="summary-card active">
+                <div class="summary-label">Sitios Activos</div>
+                <div class="summary-number" id="sitesActive">0</div>
+            </div>
+            <div class="summary-card error">
+                <div class="summary-label">Sitios con Fallo</div>
+                <div class="summary-number" id="sitesError">0</div>
+            </div>
+            <div class="summary-card down">
+                <div class="summary-label">Sitios Caídos</div>
+                <div class="summary-number" id="sitesDown">0</div>
+            </div>
+        </div>
+        
+        <div class="sites-grid" id="sitesGrid">
+            <div class="empty-state" style="grid-column: 1 / -1; text-align: center; padding: 40px; color: #8b949e;">
+                🔍 Descubriendo sitios web...
+            </div>
+        </div>
+    </div>
+    
+    <!-- Pestaña: Seguridad -->
+    <div id="tab-security" class="tab-content">
+        <div class="console-container">
+            <div class="console-wrapper">
+                <h3>🌐 RED</h3>
+                <pre id="net" class="console"><span class="empty-state">Esperando datos de red...</span></pre>
+            </div>
+            <div class="console-wrapper">
+                <h3>📂 ARCHIVOS</h3>
+                <pre id="file" class="console"><span class="empty-state">Esperando cambios de archivos...</span></pre>
+            </div>
         </div>
     </div>
     
@@ -469,6 +790,55 @@
         let socket;
         let reconnectAttempts = 0;
         const maxReconnectAttempts = 10;
+        let sitesData = [];
+        
+        // Sistema de pestañas
+        function switchTab(tabName) {
+            // Ocultar todas las pestañas
+            document.querySelectorAll('.tab-content').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            document.querySelectorAll('.tab').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            
+            // Mostrar pestaña seleccionada
+            document.getElementById(`tab-${tabName}`).classList.add('active');
+            event.target.classList.add('active');
+        }
+        
+        // Sistema de notificaciones toast
+        function showToast(title, message, type = 'info', duration = 5000) {
+            const container = document.getElementById('toastContainer');
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            
+            const icons = {
+                success: '✅',
+                warning: '⚠️',
+                error: '🚨',
+                info: 'ℹ️'
+            };
+            
+            toast.innerHTML = `
+                <div class="toast-icon">${icons[type] || icons.info}</div>
+                <div class="toast-content">
+                    <div class="toast-title">${title}</div>
+                    <div class="toast-message">${message}</div>
+                </div>
+                <button class="toast-close" onclick="this.parentElement.remove()">×</button>
+            `;
+            
+            container.appendChild(toast);
+            
+            // Auto-eliminar después de la duración
+            if (duration > 0) {
+                setTimeout(() => {
+                    toast.style.animation = 'slideIn 0.3s ease-out reverse';
+                    setTimeout(() => toast.remove(), 300);
+                }, duration);
+            }
+        }
         
         function initSocket() {
             // Conectar solo a localhost
@@ -484,16 +854,16 @@
                 console.log('✅ Conectado al servidor');
                 updateStatus(true);
                 reconnectAttempts = 0;
-                showAlert('Conectado al servidor Sentinel', 'info');
+                showToast('Conectado', 'Servidor Sentinel conectado correctamente', 'success');
             });
             
             socket.on('disconnect', (reason) => {
                 console.log('❌ Desconectado:', reason);
                 updateStatus(false);
                 if (reason === 'io server disconnect') {
-                    showAlert('Desconectado por el servidor. Reconectando...', 'warning');
+                    showToast('Desconectado', 'Desconectado por el servidor. Reconectando...', 'warning');
                 } else {
-                    showAlert('Conexión perdida. Reconectando...', 'warning');
+                    showToast('Desconectado', 'Conexión perdida. Reconectando...', 'warning');
                 }
             });
             
@@ -502,9 +872,9 @@
                 updateStatus(false);
                 reconnectAttempts++;
                 if (reconnectAttempts <= maxReconnectAttempts) {
-                    showAlert(`Error de conexión (${reconnectAttempts}/${maxReconnectAttempts}). Reintentando...`, 'error');
+                    showToast('Error de conexión', `Reintentando (${reconnectAttempts}/${maxReconnectAttempts})...`, 'warning');
                 } else {
-                    showAlert('No se pudo conectar al servidor. Verifica que esté ejecutándose.', 'error');
+                    showToast('Error de conexión', 'No se pudo conectar al servidor. Verifica que esté ejecutándose.', 'error', 0);
                 }
             });
             
@@ -535,6 +905,18 @@
             socket.on('ui_crontab', (data) => {
                 if (data && Array.isArray(data)) {
                     updateCrontab(data);
+                }
+            });
+            
+            socket.on('ui_sites', (data) => {
+                if (data && Array.isArray(data)) {
+                    updateSites(data);
+                }
+            });
+            
+            socket.on('ui_sites_alert', (data) => {
+                if (data && typeof data === 'object') {
+                    handleSitesAlert(data);
                 }
             });
         }
@@ -742,27 +1124,105 @@
             if (confirm('⚠️ ¿Estás seguro de activar el PROTOCOLO DE PÁNICO?\n\nEsto bloqueará todas las conexiones salientes excepto SSH y localhost.')) {
                 if (socket && socket.connected) {
                     socket.emit('panic_action');
-                    showAlert('🚨 Protocolo de pánico activado', 'error');
+                    showToast('Protocolo de Pánico', 'Protocolo de pánico activado', 'error', 0);
                 } else {
-                    showAlert('Error: No hay conexión con el servidor', 'error');
+                    showToast('Error', 'No hay conexión con el servidor', 'error');
                 }
             }
         }
         
         function showAlert(message, type = 'info') {
-            const container = document.getElementById('alertContainer');
-            const alert = document.createElement('div');
-            alert.className = `alert ${type}`;
-            alert.textContent = message;
+            // Usar toast en lugar de alert antiguo
+            showToast(type === 'error' ? 'Error' : type === 'warning' ? 'Advertencia' : 'Información', message, type);
+        }
+        
+        function updateSites(sites) {
+            sitesData = sites;
+            const grid = document.getElementById('sitesGrid');
             
-            container.innerHTML = '';
-            container.appendChild(alert);
+            // Limpiar grid
+            grid.innerHTML = '';
             
-            // Auto-ocultar después de 5 segundos (excepto errores críticos)
-            if (type !== 'error' || message.includes('No se pudo conectar')) {
-                setTimeout(() => {
-                    alert.remove();
-                }, 5000);
+            if (sites.length === 0) {
+                grid.innerHTML = '<div class="empty-state" style="grid-column: 1 / -1; text-align: center; padding: 40px; color: #8b949e;">🔍 No se encontraron sitios web</div>';
+                return;
+            }
+            
+            // Contar por estado
+            const active = sites.filter(s => s.status === 'active').length;
+            const errors = sites.filter(s => s.status === 'error').length;
+            const down = sites.filter(s => s.status === 'down').length;
+            
+            // Actualizar resumen
+            document.getElementById('sitesActive').textContent = active;
+            document.getElementById('sitesError').textContent = errors;
+            document.getElementById('sitesDown').textContent = down;
+            
+            // Crear tarjetas de sitios
+            sites.forEach(site => {
+                const card = document.createElement('div');
+                card.className = `site-card ${site.status}`;
+                
+                const statusText = {
+                    'active': 'Activo',
+                    'error': 'Error',
+                    'down': 'Caído',
+                    'unknown': 'Desconocido'
+                };
+                
+                card.innerHTML = `
+                    <div class="site-header">
+                        <div class="site-domain">${site.domain}</div>
+                        <div class="site-status ${site.status}">${statusText[site.status] || 'Desconocido'}</div>
+                    </div>
+                    <div class="site-info">
+                        <div class="site-info-item">
+                            <span class="site-info-label">URL:</span>
+                            <span class="site-info-value">${site.url}</span>
+                        </div>
+                        ${site.statusCode ? `
+                        <div class="site-info-item">
+                            <span class="site-info-label">Código HTTP:</span>
+                            <span class="site-info-value">${site.statusCode}</span>
+                        </div>
+                        ` : ''}
+                        ${site.responseTime !== null ? `
+                        <div class="site-info-item">
+                            <span class="site-info-label">Tiempo de respuesta:</span>
+                            <span class="site-info-value">${site.responseTime}ms</span>
+                        </div>
+                        ` : ''}
+                        ${site.lastCheck ? `
+                        <div class="site-info-item">
+                            <span class="site-info-label">Última verificación:</span>
+                            <span class="site-info-value">${new Date(site.lastCheck).toLocaleTimeString()}</span>
+                        </div>
+                        ` : ''}
+                        ${site.error ? `
+                        <div class="site-info-item" style="color: #da3633; margin-top: 8px;">
+                            <span>⚠️ ${site.error}</span>
+                        </div>
+                        ` : ''}
+                    </div>
+                `;
+                
+                grid.appendChild(card);
+            });
+        }
+        
+        function handleSitesAlert(data) {
+            const { down, errors } = data;
+            
+            if (down && down.length > 0) {
+                down.forEach(site => {
+                    showToast('Sitio Caído', `${site.domain} no está disponible`, 'error', 10000);
+                });
+            }
+            
+            if (errors && errors.length > 0) {
+                errors.forEach(site => {
+                    showToast('Error en Sitio', `${site.domain}: ${site.error || 'Error desconocido'}`, 'warning', 8000);
+                });
             }
         }
         
@@ -821,7 +1281,7 @@
                 const threatEl = document.getElementById('threat');
                 threatEl.textContent = 'CRÍTICA';
                 threatEl.className = 'stats danger';
-                showAlert(`🚨 Se detectaron ${processes.length} proceso(s) PHP sospechoso(s)`, 'error');
+                showToast('Procesos Sospechosos', `Se detectaron ${processes.length} proceso(s) PHP sospechoso(s)`, 'error');
             }
         }
         
@@ -858,7 +1318,7 @@
                 const threatEl = document.getElementById('threat');
                 threatEl.textContent = 'CRÍTICA';
                 threatEl.className = 'stats danger';
-                showAlert(`🚨 Se detectaron ${crontabs.length} tarea(s) sospechosa(s) en crontab`, 'error');
+                showToast('Crontab Sospechoso', `Se detectaron ${crontabs.length} tarea(s) sospechosa(s) en crontab`, 'error');
             }
         }
         

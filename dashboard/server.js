@@ -73,6 +73,18 @@ io.on('connection', (socket) => {
         }
     });
     
+    socket.on('sites_status', (data) => {
+        if (data && Array.isArray(data)) {
+            io.emit('ui_sites', data);
+        }
+    });
+    
+    socket.on('sites_alert', (data) => {
+        if (data && typeof data === 'object') {
+            io.emit('ui_sites_alert', data);
+        }
+    });
+    
     socket.on('panic_action', () => {
         console.warn('🚨 PROTOCOLO DE PÁNICO ACTIVADO');
         io.emit('trigger_panic');
