@@ -704,6 +704,8 @@
         <button class="tab active" onclick="switchTab('monitoring')">📊 Monitoreo</button>
         <button class="tab" onclick="switchTab('sites')">🌐 Sitios Web</button>
         <button class="tab" onclick="switchTab('security')">🔒 Seguridad</button>
+        <button class="tab" onclick="switchTab('ai')">🤖 Análisis de IA</button>
+        <button class="tab" onclick="switchTab('soc')">🛡️ Automatización SOC</button>
     </div>
     
     <!-- Pestaña: Monitoreo -->
@@ -786,7 +788,111 @@
         </div>
     </div>
     
+    <!-- Pestaña: Análisis de IA -->
+    <div id="tab-ai" class="tab-content">
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px;">
+            <div>
+                <label style="display: block; margin-bottom: 8px; color: #8b949e;">Modelo de IA:</label>
+                <select id="aiModel" style="width: 100%; padding: 10px; background: #161b22; border: 1px solid #30363d; border-radius: 6px; color: #c9d1d9;">
+                    <option value="mistral">Mistral (Recomendado para seguridad)</option>
+                    <option value="llama3.2">Llama 3.2</option>
+                    <option value="deepseek-r1">DeepSeek R1</option>
+                    <option value="qwen2.5">Qwen 2.5</option>
+                </select>
+            </div>
+            <div>
+                <button onclick="generateAIAnalysis()" style="width: 100%; padding: 12px; background: #58a6ff; color: white; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; margin-top: 28px;">
+                    🔍 Generar Análisis Completo
+                </button>
+            </div>
+        </div>
+        
+        <div style="background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 20px; margin-bottom: 20px;">
+            <h3 style="margin-bottom: 15px; color: #58a6ff;">💬 Conversación con IA</h3>
+            <div id="aiChat" style="height: 400px; overflow-y: auto; background: #0d1117; padding: 15px; border-radius: 6px; margin-bottom: 15px; font-size: 0.9rem; line-height: 1.6;">
+                <div class="ai-message" style="padding: 10px; margin-bottom: 10px; background: rgba(88, 166, 255, 0.1); border-left: 3px solid #58a6ff; border-radius: 4px;">
+                    <strong style="color: #58a6ff;">🤖 Asistente:</strong>
+                    <div style="margin-top: 5px; color: #c9d1d9;">
+                        Hola, soy tu asistente de análisis de seguridad. Puedo ayudarte a:
+                        <ul style="margin: 10px 0; padding-left: 20px;">
+                            <li>Analizar amenazas detectadas en tu sistema</li>
+                            <li>Generar instrucciones de reconocimiento y mitigación</li>
+                            <li>Responder preguntas sobre seguridad</li>
+                        </ul>
+                        Haz clic en "Generar Análisis Completo" para que analice todos los datos del sistema, o escribe una pregunta específica.
+                    </div>
+                </div>
+            </div>
+            
+            <div style="display: flex; gap: 10px;">
+                <input type="text" id="aiInput" placeholder="Escribe tu pregunta o solicita un análisis..." 
+                       style="flex: 1; padding: 12px; background: #0d1117; border: 1px solid #30363d; border-radius: 6px; color: #c9d1d9;"
+                       onkeypress="if(event.key === 'Enter') sendAIMessage()">
+                <button onclick="sendAIMessage()" style="padding: 12px 24px; background: #3fb950; color: white; border: none; border-radius: 6px; font-weight: bold; cursor: pointer;">
+                    Enviar
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Pestaña: Automatización SOC -->
+    <div id="tab-soc" class="tab-content">
+        <div style="background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 20px; margin-bottom: 20px;">
+            <h3 style="margin-bottom: 15px; color: #58a6ff;">🛡️ Sistema de Investigación Automática SOC</h3>
+            <p style="color: #8b949e; margin-bottom: 15px;">
+                El sistema investiga automáticamente cuando se detectan múltiples eventos sospechosos. 
+                La IA genera comandos de investigación y analiza los hallazgos sin tomar acciones destructivas.
+            </p>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-top: 20px;">
+                <div style="background: #0d1117; padding: 15px; border-radius: 6px; border: 1px solid #30363d;">
+                    <div style="color: #8b949e; font-size: 0.9rem;">Investigaciones Totales</div>
+                    <div id="socTotalInvestigations" style="font-size: 2rem; color: #58a6ff; font-weight: bold;">0</div>
+                </div>
+                <div style="background: #0d1117; padding: 15px; border-radius: 6px; border: 1px solid #30363d;">
+                    <div style="color: #8b949e; font-size: 0.9rem;">En Progreso</div>
+                    <div id="socInProgress" style="font-size: 2rem; color: #ffa657; font-weight: bold;">0</div>
+                </div>
+                <div style="background: #0d1117; padding: 15px; border-radius: 6px; border: 1px solid #30363d;">
+                    <div style="color: #8b949e; font-size: 0.9rem;">Archivos en Cuarentena</div>
+                    <div id="socQuarantined" style="font-size: 2rem; color: #da3633; font-weight: bold;">0</div>
+                </div>
+            </div>
+        </div>
+        
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+            <div style="background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 20px;">
+                <h3 style="margin-bottom: 15px; color: #58a6ff;">📋 Investigaciones</h3>
+                <div id="socInvestigations" style="max-height: 600px; overflow-y: auto;">
+                    <div class="empty-state" style="text-align: center; padding: 40px; color: #8b949e;">
+                        No hay investigaciones aún...
+                    </div>
+                </div>
+            </div>
+            
+            <div style="background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 20px;">
+                <h3 style="margin-bottom: 15px; color: #58a6ff;">🔒 Archivos en Cuarentena</h3>
+                <div id="socQuarantineList" style="max-height: 600px; overflow-y: auto;">
+                    <div class="empty-state" style="text-align: center; padding: 40px; color: #8b949e;">
+                        No hay archivos en cuarentena...
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
     <script>
+        // Verificar autenticación al cargar
+        fetch('/api/auth/check')
+            .then(res => res.json())
+            .then(data => {
+                if (!data.authenticated) {
+                    window.location.href = '/';
+                }
+            })
+            .catch(() => {
+                window.location.href = '/';
+            });
+        
         let socket;
         let reconnectAttempts = 0;
         const maxReconnectAttempts = 10;
@@ -919,6 +1025,508 @@
                     handleSitesAlert(data);
                 }
             });
+            
+            // Recibir historial completo cuando se conecta
+            socket.on('log_history', (data) => {
+                if (data) {
+                    loadLogHistory(data);
+                }
+            });
+            
+            // Recibir actualizaciones de investigaciones SOC
+            socket.on('soc_investigation_update', (data) => {
+                if (data) {
+                    updateSOCInvestigation(data);
+                }
+            });
+        }
+        
+        // Cargar investigaciones SOC al iniciar
+        async function loadSOCInvestigations() {
+            try {
+                const response = await fetch('/api/soc/investigations');
+                if (response.ok) {
+                    const investigations = await response.json();
+                    investigations.forEach(inv => updateSOCInvestigation(inv));
+                }
+            } catch (error) {
+                console.error('Error cargando investigaciones SOC:', error);
+            }
+            
+            // Cargar archivos en cuarentena
+            loadQuarantineFiles();
+        }
+        
+        // Actualizar investigación SOC
+        function updateSOCInvestigation(investigation) {
+            const container = document.getElementById('socInvestigations');
+            if (container.querySelector('.empty-state')) {
+                container.innerHTML = '';
+            }
+            
+            let investigationEl = document.getElementById(`soc-inv-${investigation.id}`);
+            if (!investigationEl) {
+                investigationEl = document.createElement('div');
+                investigationEl.id = `soc-inv-${investigation.id}`;
+                investigationEl.style.cssText = 'background: #0d1117; border: 1px solid #30363d; border-radius: 6px; padding: 15px; margin-bottom: 15px;';
+                container.insertBefore(investigationEl, container.firstChild);
+            }
+            
+            const statusColors = {
+                'investigating': '#ffa657',
+                'commands_generated': '#58a6ff',
+                'executing': '#58a6ff',
+                'completed': '#3fb950',
+                'error': '#da3633'
+            };
+            
+            const statusTexts = {
+                'investigating': '🔍 Generando comandos...',
+                'commands_generated': '📝 Comandos generados',
+                'executing': '⚙️ Ejecutando comandos',
+                'completed': '✅ Completada',
+                'error': '❌ Error'
+            };
+            
+            // Calcular progreso
+            const totalCommands = investigation.totalCommands || investigation.commands?.length || 0;
+            const currentIndex = investigation.currentCommandIndex || 0;
+            const progressPercent = totalCommands > 0 ? Math.round((currentIndex / totalCommands) * 100) : 0;
+            
+            investigationEl.innerHTML = `
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                    <div>
+                        <strong style="color: #58a6ff;">${investigation.id}</strong>
+                        <div style="color: #8b949e; font-size: 0.85rem; margin-top: 4px;">
+                            ${new Date(investigation.timestamp).toLocaleString()}
+                        </div>
+                    </div>
+                    <div style="color: ${statusColors[investigation.status] || '#8b949e'}; font-weight: bold;">
+                        ${statusTexts[investigation.status] || investigation.status}
+                    </div>
+                </div>
+                
+                ${investigation.status === 'executing' && investigation.currentCommand ? `
+                    <div style="margin-top: 15px; padding: 15px; background: #161b22; border: 1px solid #58a6ff; border-radius: 6px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                            <div style="color: #58a6ff; font-weight: bold;">
+                                ⚙️ Ejecutando comando ${currentIndex} de ${totalCommands}
+                            </div>
+                            <div style="color: #8b949e; font-size: 0.85rem;">
+                                ${progressPercent}%
+                            </div>
+                        </div>
+                        <div style="background: #0d1117; padding: 10px; border-radius: 4px; margin-bottom: 10px; font-family: monospace; font-size: 0.85rem; color: #c9d1d9;">
+                            <div style="color: #58a6ff; margin-bottom: 5px;">$ ${investigation.currentCommand}</div>
+                            <div style="color: ${investigation.currentCommandStatus === 'error' ? '#da3633' : '#8b949e'}; margin-top: 5px;">
+                                Estado: ${investigation.currentCommandStatus === 'ejecutando' ? '🔄 Ejecutando...' : 
+                                         investigation.currentCommandStatus === 'completado' ? '✅ Completado' : 
+                                         investigation.currentCommandStatus === 'error' ? '❌ Error' : '⏳ Pendiente'}
+                            </div>
+                        </div>
+                        ${investigation.currentCommandOutput ? `
+                            <details open style="margin-top: 10px;">
+                                <summary style="color: #58a6ff; cursor: pointer; font-weight: bold; margin-bottom: 5px;">Salida en tiempo real</summary>
+                                <div style="background: #0d1117; padding: 10px; border-radius: 4px; font-family: monospace; font-size: 0.8rem; max-height: 200px; overflow-y: auto; color: #c9d1d9; white-space: pre-wrap; word-break: break-all;">
+                                    ${investigation.currentCommandOutput}
+                                </div>
+                            </details>
+                        ` : ''}
+                        <div style="margin-top: 10px; background: #0d1117; height: 4px; border-radius: 2px; overflow: hidden;">
+                            <div style="background: #58a6ff; height: 100%; width: ${progressPercent}%; transition: width 0.3s;"></div>
+                        </div>
+                    </div>
+                ` : ''}
+                
+                ${investigation.commands && investigation.commands.length > 0 ? `
+                    <div style="margin-top: 10px;">
+                        <div style="color: #8b949e; font-size: 0.9rem; margin-bottom: 5px;">
+                            Comandos generados: ${investigation.commands.length}
+                            ${investigation.status === 'completed' ? ' - Todos ejecutados' : ''}
+                        </div>
+                        <div style="background: #161b22; padding: 10px; border-radius: 4px; font-family: monospace; font-size: 0.85rem; max-height: 150px; overflow-y: auto;">
+                            ${investigation.commands.slice(0, 5).map((cmd, idx) => {
+                                const cmdResult = investigation.commandProgress?.find(c => c.index === idx + 1);
+                                const statusIcon = cmdResult ? 
+                                    (cmdResult.status === 'completado' ? '✅' : cmdResult.status === 'error' ? '❌' : '⏳') : 
+                                    (idx < currentIndex ? '✅' : idx === currentIndex - 1 ? '🔄' : '⏳');
+                                return `<div style="color: ${cmdResult?.status === 'error' ? '#da3633' : cmdResult?.status === 'completado' ? '#3fb950' : '#c9d1d9'}; margin-bottom: 3px;">
+                                    ${statusIcon} $ ${cmd}
+                                </div>`;
+                            }).join('')}
+                            ${investigation.commands.length > 5 ? `<div style="color: #8b949e;">... y ${investigation.commands.length - 5} más</div>` : ''}
+                        </div>
+                    </div>
+                ` : ''}
+                
+                ${investigation.commandProgress && investigation.commandProgress.length > 0 ? `
+                    <details style="margin-top: 10px;">
+                        <summary style="color: #58a6ff; cursor: pointer; font-weight: bold;">Ver resultados de comandos (${investigation.commandProgress.length})</summary>
+                        <div style="margin-top: 10px; max-height: 400px; overflow-y: auto;">
+                            ${investigation.commandProgress.map(cmd => `
+                                <div style="background: #161b22; padding: 10px; border-radius: 4px; margin-bottom: 10px; border-left: 3px solid ${cmd.status === 'completado' ? '#3fb950' : cmd.status === 'error' ? '#da3633' : '#58a6ff'};">
+                                    <div style="color: #58a6ff; font-weight: bold; margin-bottom: 5px; font-family: monospace; font-size: 0.85rem;">
+                                        $ ${cmd.command}
+                                    </div>
+                                    <div style="color: #8b949e; font-size: 0.8rem; margin-bottom: 5px;">
+                                        Estado: ${cmd.status === 'completado' ? '✅ Completado' : cmd.status === 'error' ? '❌ Error' : '⏳ Pendiente'} 
+                                        ${cmd.exitCode !== undefined ? `(Código: ${cmd.exitCode})` : ''}
+                                    </div>
+                                    ${cmd.output ? `
+                                        <details style="margin-top: 5px;">
+                                            <summary style="color: #8b949e; cursor: pointer; font-size: 0.85rem;">Ver salida</summary>
+                                            <div style="background: #0d1117; padding: 8px; border-radius: 4px; margin-top: 5px; font-family: monospace; font-size: 0.75rem; color: #c9d1d9; white-space: pre-wrap; word-break: break-all; max-height: 200px; overflow-y: auto;">
+                                                ${cmd.output.substring(0, 5000)}${cmd.output.length > 5000 ? '\n... (truncado)' : ''}
+                                            </div>
+                                        </details>
+                                    ` : ''}
+                                    ${cmd.error ? `
+                                        <div style="background: rgba(218, 54, 51, 0.1); padding: 8px; border-radius: 4px; margin-top: 5px; font-family: monospace; font-size: 0.75rem; color: #f85149; white-space: pre-wrap;">
+                                            ${cmd.error}
+                                        </div>
+                                    ` : ''}
+                                </div>
+                            `).join('')}
+                        </div>
+                    </details>
+                ` : ''}
+                
+                ${investigation.quarantined && investigation.quarantined.length > 0 ? `
+                    <div style="margin-top: 10px; padding: 10px; background: rgba(218, 54, 51, 0.1); border: 1px solid #da3633; border-radius: 4px;">
+                        <div style="color: #da3633; font-weight: bold; margin-bottom: 5px;">🔒 ${investigation.quarantined.length} archivo(s) en cuarentena</div>
+                        <div style="font-size: 0.85rem; color: #8b949e;">
+                            ${investigation.quarantined.slice(0, 3).map(q => `<div>• ${q.original}</div>`).join('')}
+                            ${investigation.quarantined.length > 3 ? `<div>... y ${investigation.quarantined.length - 3} más</div>` : ''}
+                        </div>
+                    </div>
+                ` : ''}
+                
+                ${investigation.report ? `
+                    <details style="margin-top: 10px;">
+                        <summary style="color: #58a6ff; cursor: pointer; font-weight: bold;">📄 Ver Reporte Completo</summary>
+                        <div style="background: #161b22; padding: 15px; border-radius: 4px; margin-top: 10px; white-space: pre-wrap; font-size: 0.85rem; line-height: 1.6; max-height: 400px; overflow-y: auto; color: #c9d1d9;">
+                            ${investigation.report}
+                        </div>
+                    </details>
+                ` : ''}
+            `;
+            
+            // Actualizar estadísticas
+            updateSOCStats();
+            
+            // Auto-scroll si está ejecutando
+            if (investigation.status === 'executing' && investigation.currentCommand) {
+                investigationEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            }
+        }
+        
+        // Actualizar estadísticas SOC
+        function updateSOCStats() {
+            const investigations = Array.from(document.querySelectorAll('[id^="soc-inv-"]'));
+            const total = investigations.length;
+            const inProgress = investigations.filter(el => {
+                const status = el.textContent;
+                return status.includes('Investigando') || status.includes('Ejecutando') || status.includes('generados');
+            }).length;
+            
+            document.getElementById('socTotalInvestigations').textContent = total;
+            document.getElementById('socInProgress').textContent = inProgress;
+        }
+        
+        // Cargar archivos en cuarentena
+        async function loadQuarantineFiles() {
+            try {
+                const response = await fetch('/api/soc/quarantine');
+                if (response.ok) {
+                    const files = await response.json();
+                    const container = document.getElementById('socQuarantineList');
+                    
+                    if (container.querySelector('.empty-state')) {
+                        container.innerHTML = '';
+                    }
+                    
+                    if (files.length === 0) {
+                        container.innerHTML = '<div class="empty-state" style="text-align: center; padding: 40px; color: #8b949e;">No hay archivos en cuarentena...</div>';
+                    } else {
+                        container.innerHTML = files.map(file => `
+                            <div style="background: #0d1117; border: 1px solid #30363d; border-radius: 6px; padding: 15px; margin-bottom: 10px;">
+                                <div style="color: #c9d1d9; font-weight: bold; margin-bottom: 5px;">${file.name}</div>
+                                <div style="color: #8b949e; font-size: 0.85rem; margin-bottom: 10px;">
+                                    Tamaño: ${(file.size / 1024).toFixed(2)} KB<br>
+                                    Creado: ${new Date(file.created).toLocaleString()}
+                                </div>
+                                <a href="${file.path}" download style="display: inline-block; padding: 6px 12px; background: #58a6ff; color: white; text-decoration: none; border-radius: 4px; font-size: 0.85rem;">
+                                    ⬇️ Descargar
+                                </a>
+                            </div>
+                        `).join('');
+                    }
+                    
+                    document.getElementById('socQuarantined').textContent = files.length;
+                }
+            } catch (error) {
+                console.error('Error cargando archivos en cuarentena:', error);
+            }
+        }
+        
+        // Cargar investigaciones al iniciar
+        loadSOCInvestigations();
+        
+        // Cargar historial de logs persistente
+        function loadLogHistory(history) {
+            // Cargar historial de red
+            if (history.network && history.network.length > 0) {
+                const netEl = document.getElementById('net');
+                // Limpiar solo el empty state
+                if (netEl.querySelector('.empty-state')) {
+                    netEl.innerHTML = '';
+                }
+                
+                // Ordenar por timestamp (más reciente primero) y cargar
+                const sortedNetwork = history.network.sort((a, b) => b.timestamp - a.timestamp);
+                
+                sortedNetwork.forEach(item => {
+                    // Crear entrada directamente sin usar updateNetwork para evitar duplicados
+                    const lines = (item.data || '').split('\n').filter(l => l.trim());
+                    lines.forEach(line => {
+                        if (line.trim()) {
+                            createNetworkEntry(line, netEl);
+                        }
+                    });
+                });
+            }
+            
+            // Cargar historial de archivos
+            if (history.files && history.files.length > 0) {
+                const fileEl = document.getElementById('file');
+                // Limpiar solo el empty state
+                if (fileEl.querySelector('.empty-state')) {
+                    fileEl.innerHTML = '';
+                }
+                
+                // Ordenar por timestamp (más reciente primero) y cargar
+                const sortedFiles = history.files.sort((a, b) => b.timestamp - a.timestamp);
+                
+                sortedFiles.forEach(file => {
+                    createFileEntry(file, fileEl);
+                });
+            }
+            
+            // Cargar historial de procesos
+            if (history.processes && history.processes.length > 0) {
+                const processEl = document.getElementById('process');
+                if (processEl.querySelector('.empty-state')) {
+                    processEl.innerHTML = '';
+                }
+                
+                // Agrupar procesos por timestamp similar (misma verificación)
+                const processGroups = {};
+                history.processes.forEach(proc => {
+                    const key = Math.floor(proc.timestamp / 5000) * 5000; // Agrupar por ventana de 5 segundos
+                    if (!processGroups[key]) {
+                        processGroups[key] = [];
+                    }
+                    processGroups[key].push(proc);
+                });
+                
+                // Mostrar el grupo más reciente
+                const latestGroup = Object.keys(processGroups).sort((a, b) => b - a)[0];
+                if (latestGroup) {
+                    processEl.innerHTML = '';
+                    processGroups[latestGroup].forEach(proc => {
+                        createProcessEntry(proc, processEl);
+                    });
+                }
+            }
+            
+            // Cargar historial de crontab
+            if (history.crontab && history.crontab.length > 0) {
+                const crontabEl = document.getElementById('crontab');
+                if (crontabEl.querySelector('.empty-state')) {
+                    crontabEl.innerHTML = '';
+                }
+                
+                // Agrupar crontab por timestamp similar
+                const crontabGroups = {};
+                history.crontab.forEach(cron => {
+                    const key = Math.floor(cron.timestamp / 60000) * 60000; // Agrupar por minuto
+                    if (!crontabGroups[key]) {
+                        crontabGroups[key] = [];
+                    }
+                    crontabGroups[key].push(cron);
+                });
+                
+                // Mostrar el grupo más reciente
+                const latestGroup = Object.keys(crontabGroups).sort((a, b) => b - a)[0];
+                if (latestGroup) {
+                    crontabEl.innerHTML = '';
+                    crontabGroups[latestGroup].forEach(cron => {
+                        createCrontabEntry(cron, crontabEl);
+                    });
+                }
+            }
+        }
+        
+        // Funciones auxiliares para crear entradas sin duplicar
+        function createNetworkEntry(line, container) {
+            const entry = document.createElement('div');
+            entry.className = 'network-entry';
+            
+            // Detectar tipo de conexión y nivel de amenaza
+            let riskLevel = 'safe';
+            let stateClass = '';
+            let stateText = '';
+            
+            if (line.includes('SYN-SENT') || line.includes('SYN_SENT')) {
+                riskLevel = 'critical';
+                stateClass = 'syn-sent';
+                stateText = 'SYN-SENT';
+            } else if (line.includes('ESTAB') || line.includes('ESTABLISHED')) {
+                const hasExternalIP = /(\d{1,3}\.){3}\d{1,3}/.test(line);
+                const isLocalhost = line.includes('127.0.0.1') || line.includes('::1');
+                
+                if (hasExternalIP && !isLocalhost) {
+                    if (line.includes('php') || line.includes('python') || line.includes('perl')) {
+                        riskLevel = 'danger';
+                    } else {
+                        riskLevel = 'warning';
+                    }
+                }
+                stateClass = 'estab';
+                stateText = 'ESTAB';
+            } else if (line.includes('LISTEN')) {
+                stateClass = 'listen';
+                stateText = 'LISTEN';
+            }
+            
+            entry.classList.add(riskLevel);
+            
+            const protocolMatch = line.match(/(tcp|udp|tcp6|udp6)/i);
+            const protocol = protocolMatch ? protocolMatch[1].toUpperCase() : 'TCP';
+            
+            const timestamp = new Date().toLocaleTimeString();
+            const timestampSpan = document.createElement('span');
+            timestampSpan.className = 'network-timestamp';
+            timestampSpan.textContent = `[${timestamp}]`;
+            entry.appendChild(timestampSpan);
+            
+            const protocolSpan = document.createElement('span');
+            protocolSpan.className = 'network-protocol';
+            protocolSpan.textContent = protocol;
+            entry.appendChild(protocolSpan);
+            
+            if (stateText) {
+                const stateSpan = document.createElement('span');
+                stateSpan.className = `network-state ${stateClass}`;
+                stateSpan.textContent = stateText;
+                entry.appendChild(stateSpan);
+            }
+            
+            const infoSpan = document.createElement('span');
+            infoSpan.style.marginLeft = '8px';
+            infoSpan.style.color = '#c9d1d9';
+            let cleanLine = line.replace(/\s+/g, ' ').trim();
+            cleanLine = cleanLine.replace(/users:\([^)]+\)/g, '').trim();
+            infoSpan.textContent = cleanLine;
+            entry.appendChild(infoSpan);
+            
+            if (container.firstChild) {
+                container.insertBefore(entry, container.firstChild);
+            } else {
+                container.appendChild(entry);
+            }
+        }
+        
+        function createFileEntry(file, container) {
+            const entry = document.createElement('div');
+            entry.className = 'file-entry';
+            
+            const risk = file.risk || 'low';
+            entry.classList.add(risk);
+            
+            const timestamp = new Date(file.ts || file.timestamp).toLocaleTimeString();
+            const timestampSpan = document.createElement('span');
+            timestampSpan.className = 'file-timestamp';
+            timestampSpan.textContent = `[${timestamp}]`;
+            entry.appendChild(timestampSpan);
+            
+            const filePath = file.filePath || file.detail.split(' ')[0] || file.detail;
+            const events = file.events || (file.detail.includes('MODIFY') ? 'MODIFY' : 
+                          file.detail.includes('CREATE') ? 'CREATE' : 
+                          file.detail.includes('DELETE') ? 'DELETE' : 'MODIFY');
+            
+            const pathSpan = document.createElement('span');
+            pathSpan.className = 'file-path';
+            pathSpan.textContent = filePath;
+            entry.appendChild(pathSpan);
+            
+            const eventSpan = document.createElement('span');
+            eventSpan.className = `file-event ${events.toLowerCase()}`;
+            eventSpan.textContent = events;
+            entry.appendChild(eventSpan);
+            
+            if (file.process && file.process.pid) {
+                const processSpan = document.createElement('div');
+                processSpan.style.cssText = 'margin-top: 4px; font-size: 0.8rem; color: #8b949e;';
+                processSpan.innerHTML = `🔧 Proceso: <strong style="color: #58a6ff;">${file.process.command}</strong> (PID: ${file.process.pid}, Usuario: ${file.process.user})`;
+                entry.appendChild(processSpan);
+            }
+            
+            if (container.firstChild) {
+                container.insertBefore(entry, container.firstChild);
+            } else {
+                container.appendChild(entry);
+            }
+        }
+        
+        function createProcessEntry(proc, container) {
+            const entry = document.createElement('div');
+            entry.className = 'process-entry';
+            
+            if (proc.cpu > 50 || proc.reason.includes('Comando sospechoso')) {
+                entry.classList.add('critical');
+            } else {
+                entry.classList.add('high');
+            }
+            
+            const pidSpan = document.createElement('div');
+            pidSpan.className = 'process-pid';
+            pidSpan.textContent = `PID: ${proc.pid}`;
+            entry.appendChild(pidSpan);
+            
+            const metricsSpan = document.createElement('div');
+            metricsSpan.className = 'process-metrics';
+            metricsSpan.textContent = `CPU: ${proc.cpu}% | MEM: ${proc.mem}% | Tiempo: ${proc.time}`;
+            entry.appendChild(metricsSpan);
+            
+            const commandSpan = document.createElement('div');
+            commandSpan.className = 'process-command';
+            commandSpan.textContent = proc.command;
+            entry.appendChild(commandSpan);
+            
+            const reasonSpan = document.createElement('div');
+            reasonSpan.className = 'process-reason';
+            reasonSpan.textContent = `⚠️ ${proc.reason}`;
+            entry.appendChild(reasonSpan);
+            
+            container.appendChild(entry);
+        }
+        
+        function createCrontabEntry(cron, container) {
+            const entry = document.createElement('div');
+            entry.className = 'crontab-entry';
+            
+            const userSpan = document.createElement('div');
+            userSpan.className = 'crontab-user';
+            userSpan.textContent = `Usuario: ${cron.user}`;
+            entry.appendChild(userSpan);
+            
+            const commandSpan = document.createElement('div');
+            commandSpan.className = 'crontab-command';
+            commandSpan.textContent = cron.cron;
+            entry.appendChild(commandSpan);
+            
+            container.appendChild(entry);
         }
         
         function updateStatus(connected) {
@@ -955,17 +1563,18 @@
             else if (mem > 60) memEl.classList.add('warning');
         }
         
-        function updateNetwork(data) {
+        function updateNetwork(data, skipEmptyCheck = false) {
             const netEl = document.getElementById('net');
             const threatEl = document.getElementById('threat');
             
-            // Limpiar empty state si existe
-            if (netEl.querySelector('.empty-state')) {
+            // Limpiar empty state si existe (solo si no estamos cargando historial)
+            if (!skipEmptyCheck && netEl.querySelector('.empty-state')) {
                 netEl.innerHTML = '';
             }
             
-            // Parsear y formatear las conexiones de red
-            const lines = data.split('\n').filter(line => line.trim());
+            // Si data es un string, parsearlo; si es un objeto con data, usar data.data
+            const networkData = typeof data === 'string' ? data : (data.data || data);
+            const lines = networkData.split('\n').filter(line => line.trim());
             let hasThreat = false;
             let threatLevel = 'BAJA';
             
@@ -1069,11 +1678,11 @@
             }
         }
         
-        function updateFiles(data) {
+        function updateFiles(data, skipEmptyCheck = false) {
             const fileEl = document.getElementById('file');
             
-            // Limpiar empty state si existe
-            if (fileEl.querySelector('.empty-state')) {
+            // Limpiar empty state si existe (solo si no estamos cargando historial)
+            if (!skipEmptyCheck && fileEl.querySelector('.empty-state')) {
                 fileEl.innerHTML = '';
             }
             
@@ -1106,6 +1715,14 @@
             eventSpan.className = `file-event ${events.toLowerCase()}`;
             eventSpan.textContent = events;
             entry.appendChild(eventSpan);
+            
+            // Mostrar proceso que modificó el archivo
+            if (data.process && data.process.pid) {
+                const processSpan = document.createElement('div');
+                processSpan.style.cssText = 'margin-top: 4px; font-size: 0.8rem; color: #8b949e;';
+                processSpan.innerHTML = `🔧 Proceso: <strong style="color: #58a6ff;">${data.process.command}</strong> (PID: ${data.process.pid}, Usuario: ${data.process.user})`;
+                entry.appendChild(processSpan);
+            }
             
             // Insertar al principio
             if (fileEl.firstChild) {
@@ -1211,17 +1828,18 @@
         }
         
         function handleSitesAlert(data) {
-            const { down, errors } = data;
+            const { changed, down, errors } = data;
             
-            if (down && down.length > 0) {
-                down.forEach(site => {
-                    showToast('Sitio Caído', `${site.domain} no está disponible`, 'error', 10000);
-                });
-            }
-            
-            if (errors && errors.length > 0) {
-                errors.forEach(site => {
-                    showToast('Error en Sitio', `${site.domain}: ${site.error || 'Error desconocido'}`, 'warning', 8000);
+            // Solo notificar sitios que cambiaron de estado
+            if (changed && changed.length > 0) {
+                changed.forEach(site => {
+                    if (site.status === 'down') {
+                        showToast('Sitio Caído', `${site.domain} cambió de ${site.previousStatus} a CAÍDO`, 'error', 10000);
+                    } else if (site.status === 'error') {
+                        showToast('Error en Sitio', `${site.domain} cambió a estado ERROR: ${site.error || 'Error desconocido'}`, 'warning', 8000);
+                    } else if (site.status === 'active' && site.previousStatus !== 'active') {
+                        showToast('Sitio Recuperado', `${site.domain} está ahora ACTIVO`, 'success', 5000);
+                    }
                 });
             }
         }
@@ -1231,16 +1849,18 @@
             initSocket();
         });
         
-        function updateProcesses(processes) {
+        function updateProcesses(processes, skipEmptyCheck = false) {
             const processEl = document.getElementById('process');
             
-            // Limpiar empty state si existe
-            if (processEl.querySelector('.empty-state')) {
+            // Limpiar empty state si existe (solo si no estamos cargando historial)
+            if (!skipEmptyCheck && processEl.querySelector('.empty-state')) {
                 processEl.innerHTML = '';
             }
             
-            // Limpiar entradas antiguas
-            processEl.innerHTML = '';
+            // Limpiar entradas antiguas solo si no estamos cargando historial
+            if (!skipEmptyCheck) {
+                processEl.innerHTML = '';
+            }
             
             processes.forEach(proc => {
                 const entry = document.createElement('div');
@@ -1285,42 +1905,276 @@
             }
         }
         
-        function updateCrontab(crontabs) {
+        function updateCrontab(crontabs, skipEmptyCheck = false) {
             const crontabEl = document.getElementById('crontab');
             
-            // Limpiar empty state si existe
-            if (crontabEl.querySelector('.empty-state')) {
+            // Limpiar empty state si existe (solo si no estamos cargando historial)
+            if (!skipEmptyCheck && crontabEl.querySelector('.empty-state')) {
                 crontabEl.innerHTML = '';
             }
             
-            // Limpiar entradas antiguas
-            crontabEl.innerHTML = '';
+            // Limpiar entradas antiguas solo si no estamos cargando historial
+            if (!skipEmptyCheck) {
+                crontabEl.innerHTML = '';
+            }
             
-            crontabs.forEach(cron => {
-                const entry = document.createElement('div');
-                entry.className = 'crontab-entry';
+            if (crontabs && crontabs.length > 0) {
+                crontabs.forEach(cron => {
+                    const entry = document.createElement('div');
+                    entry.className = 'crontab-entry';
+                    
+                    const userSpan = document.createElement('div');
+                    userSpan.className = 'crontab-user';
+                    userSpan.textContent = `Usuario: ${cron.user}`;
+                    entry.appendChild(userSpan);
+                    
+                    const commandSpan = document.createElement('div');
+                    commandSpan.className = 'crontab-command';
+                    commandSpan.textContent = cron.cron;
+                    entry.appendChild(commandSpan);
+                    
+                    crontabEl.appendChild(entry);
+                });
                 
-                const userSpan = document.createElement('div');
-                userSpan.className = 'crontab-user';
-                userSpan.textContent = `Usuario: ${cron.user}`;
-                entry.appendChild(userSpan);
-                
-                const commandSpan = document.createElement('div');
-                commandSpan.className = 'crontab-command';
-                commandSpan.textContent = cron.cron;
-                entry.appendChild(commandSpan);
-                
-                crontabEl.appendChild(entry);
-            });
-            
-            // Actualizar nivel de amenaza si hay crontabs sospechosos
-            if (crontabs.length > 0) {
+                // Actualizar nivel de amenaza si hay crontabs sospechosos
                 const threatEl = document.getElementById('threat');
                 threatEl.textContent = 'CRÍTICA';
                 threatEl.className = 'stats danger';
                 showToast('Crontab Sospechoso', `Se detectaron ${crontabs.length} tarea(s) sospechosa(s) en crontab`, 'error');
+            } else {
+                // Mostrar mensaje cuando no hay tareas sospechosas
+                const emptyMsg = document.createElement('div');
+                emptyMsg.className = 'empty-state';
+                emptyMsg.textContent = 'No se detectaron tareas sospechosas en crontab';
+                crontabEl.appendChild(emptyMsg);
             }
         }
+        
+        // Variables para IA
+        let aiConversationHistory = [];
+        let systemData = {
+            processes: [],
+            network: [],
+            files: [],
+            crontab: [],
+            sites: [],
+            health: { cpu: 0, mem: 0 }
+        };
+        
+        // Recopilar datos del sistema para enviar a la IA
+        function collectSystemData() {
+            return {
+                procesos_sospechosos: systemData.processes,
+                conexiones_red: systemData.network.slice(0, 20), // Últimas 20
+                archivos_modificados: systemData.files.slice(0, 20), // Últimos 20
+                tareas_crontab: systemData.crontab,
+                sitios_web: systemData.sites.filter(s => s.status !== 'active'),
+                recursos_sistema: systemData.health,
+                timestamp: new Date().toISOString()
+            };
+        }
+        
+        // Generar análisis completo de IA
+        async function generateAIAnalysis() {
+            const chatEl = document.getElementById('aiChat');
+            const model = document.getElementById('aiModel').value;
+            
+            // Agregar mensaje de usuario
+            addAIMessage('user', 'Genera un análisis completo del sistema con instrucciones de reconocimiento y mitigación de amenazas.');
+            
+            // Mostrar loading
+            const loadingMsg = addAIMessage('assistant', '🔍 Analizando datos del sistema...', true);
+            
+            try {
+                const systemData = collectSystemData();
+                
+                const prompt = `Eres un experto en ciberseguridad. Analiza los siguientes datos de un sistema de monitoreo y proporciona:
+
+1. RECONOCIMIENTO DEL ATAQUE:
+   - Identifica qué tipo de amenaza o ataque está ocurriendo
+   - Explica los indicadores de compromiso (IOCs) detectados
+   - Describe el comportamiento sospechoso observado
+
+2. MITIGACIÓN DEL ATAQUE:
+   - Proporciona pasos específicos y ordenados para mitigar la amenaza
+   - Incluye comandos exactos cuando sea necesario
+   - Prioriza las acciones más críticas primero
+
+Datos del sistema:
+${JSON.stringify(systemData, null, 2)}
+
+Responde en español, de forma clara y estructurada.`;
+                
+                const response = await fetch('/api/ai/analyze', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        prompt: prompt,
+                        modelo: model
+                    })
+                });
+                
+                const data = await response.json();
+                
+                // Remover mensaje de loading
+                loadingMsg.remove();
+                
+                if (data.success && data.respuesta) {
+                    addAIMessage('assistant', data.respuesta);
+                    aiConversationHistory.push({ role: 'user', content: prompt });
+                    aiConversationHistory.push({ role: 'assistant', content: data.respuesta });
+                } else {
+                    addAIMessage('assistant', '❌ Error al obtener respuesta de la IA: ' + (data.error || 'Error desconocido'));
+                }
+            } catch (error) {
+                loadingMsg.remove();
+                addAIMessage('assistant', '❌ Error al conectar con la IA: ' + error.message);
+            }
+        }
+        
+        // Enviar mensaje a la IA
+        async function sendAIMessage() {
+            const input = document.getElementById('aiInput');
+            const message = input.value.trim();
+            
+            if (!message) return;
+            
+            const model = document.getElementById('aiModel').value;
+            
+            // Agregar mensaje del usuario
+            addAIMessage('user', message);
+            input.value = '';
+            
+            // Mostrar loading
+            const loadingMsg = addAIMessage('assistant', '💭 Pensando...', true);
+            
+            try {
+                // Construir prompt con contexto de la conversación
+                let contextPrompt = message;
+                
+                if (aiConversationHistory.length > 0) {
+                    contextPrompt = `Contexto de la conversación anterior:\n${aiConversationHistory.map(m => `${m.role}: ${m.content}`).join('\n\n')}\n\nNueva pregunta del usuario: ${message}`;
+                }
+                
+                // Si la pregunta es sobre el sistema, agregar datos actuales
+                if (message.toLowerCase().includes('sistema') || message.toLowerCase().includes('amenaza') || message.toLowerCase().includes('ataque')) {
+                    const systemData = collectSystemData();
+                    contextPrompt += `\n\nDatos actuales del sistema:\n${JSON.stringify(systemData, null, 2)}`;
+                }
+                
+                const response = await fetch('/api/ai/analyze', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        prompt: contextPrompt,
+                        modelo: model
+                    })
+                });
+                
+                const data = await response.json();
+                
+                // Remover mensaje de loading
+                loadingMsg.remove();
+                
+                if (data.success && data.respuesta) {
+                    addAIMessage('assistant', data.respuesta);
+                    aiConversationHistory.push({ role: 'user', content: message });
+                    aiConversationHistory.push({ role: 'assistant', content: data.respuesta });
+                } else {
+                    addAIMessage('assistant', '❌ Error al obtener respuesta de la IA: ' + (data.error || 'Error desconocido'));
+                }
+            } catch (error) {
+                loadingMsg.remove();
+                addAIMessage('assistant', '❌ Error al conectar con la IA: ' + error.message);
+            }
+        }
+        
+        // Agregar mensaje al chat
+        function addAIMessage(role, content, isLoading = false) {
+            const chatEl = document.getElementById('aiChat');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'ai-message';
+            
+            if (role === 'user') {
+                messageDiv.style.cssText = 'padding: 10px; margin-bottom: 10px; background: rgba(63, 185, 80, 0.1); border-left: 3px solid #3fb950; border-radius: 4px;';
+                messageDiv.innerHTML = `<strong style="color: #3fb950;">👤 Tú:</strong><div style="margin-top: 5px; color: #c9d1d9; white-space: pre-wrap;">${escapeHtml(content)}</div>`;
+            } else {
+                messageDiv.style.cssText = 'padding: 10px; margin-bottom: 10px; background: rgba(88, 166, 255, 0.1); border-left: 3px solid #58a6ff; border-radius: 4px;';
+                if (isLoading) {
+                    messageDiv.innerHTML = `<strong style="color: #58a6ff;">🤖 Asistente:</strong><div style="margin-top: 5px; color: #8b949e; font-style: italic;">${content}</div>`;
+                } else {
+                    messageDiv.innerHTML = `<strong style="color: #58a6ff;">🤖 Asistente:</strong><div style="margin-top: 5px; color: #c9d1d9; white-space: pre-wrap;">${formatAIMessage(content)}</div>`;
+                }
+            }
+            
+            chatEl.appendChild(messageDiv);
+            chatEl.scrollTop = chatEl.scrollHeight;
+            
+            return messageDiv;
+        }
+        
+        // Formatear mensaje de IA (markdown básico)
+        function formatAIMessage(text) {
+            // Convertir números a listas
+            text = text.replace(/^(\d+)\.\s+(.+)$/gm, '<strong>$1.</strong> $2');
+            // Negrita para títulos
+            text = text.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+            // Código inline
+            text = text.replace(/`(.+?)`/g, '<code style="background: rgba(0,0,0,0.3); padding: 2px 4px; border-radius: 3px;">$1</code>');
+            // Bloques de código
+            text = text.replace(/```([\s\S]*?)```/g, '<pre style="background: rgba(0,0,0,0.5); padding: 10px; border-radius: 4px; overflow-x: auto;"><code>$1</code></pre>');
+            return escapeHtml(text);
+        }
+        
+        // Escapar HTML
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+        
+        // Actualizar datos del sistema cuando lleguen nuevos datos
+        socket?.on('ui_process', (data) => {
+            if (data && Array.isArray(data)) {
+                systemData.processes = data;
+            }
+        });
+        
+        socket?.on('ui_network', (data) => {
+            if (data) {
+                systemData.network.push({ data, timestamp: Date.now() });
+                if (systemData.network.length > 50) systemData.network.shift();
+            }
+        });
+        
+        socket?.on('ui_file', (data) => {
+            if (data) {
+                systemData.files.push(data);
+                if (systemData.files.length > 50) systemData.files.shift();
+            }
+        });
+        
+        socket?.on('ui_crontab', (data) => {
+            if (data && Array.isArray(data)) {
+                systemData.crontab = data;
+            }
+        });
+        
+        socket?.on('ui_sites', (data) => {
+            if (data && Array.isArray(data)) {
+                systemData.sites = data;
+            }
+        });
+        
+        socket?.on('ui_health', (data) => {
+            if (data) {
+                systemData.health = data;
+            }
+        });
         
         // Manejar cierre de página
         window.addEventListener('beforeunload', () => {

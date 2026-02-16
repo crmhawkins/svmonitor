@@ -72,7 +72,7 @@ function startMonitoring() {
             
             const memUsage = ((1 - os.freemem() / os.totalmem()) * 100).toFixed(2);
             
-            socket.emit('health_stats', {
+    socket.emit('health_stats', {
                 cpu: cpuLoad.toFixed(2),
                 mem: memUsage,
                 ts: Date.now()
@@ -179,7 +179,12 @@ function startMonitoring() {
                                         reason = reason ? `${reason}, Comando sospechoso` : 'Comando sospechoso';
                                     }
                                     
-                                    if (suspicious) {
+                                    // Excluir procesos del backend/frontend propios
+                                    const isExcluded = config.excludedProcesses.some(excluded => 
+                                        command.includes(excluded)
+                                    );
+                                    
+                                    if (suspicious && !isExcluded) {
                                         processes.push({
                                             pid,
                                             cpu,
@@ -260,9 +265,10 @@ function startMonitoring() {
                 exec("for user in $(cut -f1 -d: /etc/passwd); do crontab -u $user -l 2>/dev/null | grep -v '^#' | grep -v '^$' && echo \"USER:$user\"; done", 
                     { timeout: 5000 }, 
                     (err, stdout) => {
-                        if (!err && stdout) {
+                        const suspicious = [];
+                        
+                        if (!err && stdout && stdout.trim()) {
                             const lines = stdout.trim().split('\n').filter(l => l.trim());
-                            const suspicious = [];
                             let currentUser = '';
                             
                             lines.forEach(line => {
@@ -280,15 +286,15 @@ function startMonitoring() {
                                     }
                                 }
                             });
-                            
-                            if (suspicious.length > 0) {
-                                socket.emit('crontab_alert', suspicious);
-                            }
                         }
+                        
+                        // Siempre enviar resultado, incluso si está vacío
+                        socket.emit('crontab_alert', suspicious);
                     }
                 );
             } catch (error) {
-                // Ignorar errores de usuarios sin crontab
+                // Enviar array vacío en caso de error
+                socket.emit('crontab_alert', []);
             }
         }, config.crontabCheckInterval);
     }
@@ -342,12 +348,69 @@ function startInotifyWatcher(watchPath) {
                     const [filePath, events] = line.split(' ');
                     const riskLevel = assessFileRisk(filePath, events);
                     
-                    socket.emit('file_change', { 
-                        detail: line.trim(),
-                        filePath: filePath,
-                        events: events,
-                        risk: riskLevel,
-                        ts: Date.now() 
+                    // Detectar qué proceso está modificando el archivo
+                    exec(`lsof "${filePath}" 2>/dev/null | head -1`, { timeout: 2000 }, (err, stdout) => {
+                        let processInfo = null;
+                        
+                        if (!err && stdout && stdout.trim()) {
+                            const parts = stdout.trim().split(/\s+/);
+                            if (parts.length >= 2) {
+                                processInfo = {
+                                    command: parts[0],
+                                    pid: parts[1],
+                                    user: parts[2] || 'unknown'
+                                };
+                            }
+                        }
+                        
+                        // Si lsof no funciona, intentar con fuser
+                        if (!processInfo) {
+                            exec(`fuser "${filePath}" 2>/dev/null`, { timeout: 2000 }, (err2, stdout2) => {
+                                if (!err2 && stdout2) {
+                                    const pid = stdout2.trim().split(/\s+/)[0];
+                                    if (pid) {
+                                        exec(`ps -p ${pid} -o comm=,pid=,user= 2>/dev/null | head -1`, { timeout: 1000 }, (err3, stdout3) => {
+                                            if (!err3 && stdout3) {
+                                                const parts = stdout3.trim().split(/\s+/);
+                                                processInfo = {
+                                                    command: parts[0] || 'unknown',
+                                                    pid: pid,
+                                                    user: parts[1] || 'unknown'
+                                                };
+                                            }
+                                            
+                                            socket.emit('file_change', { 
+                                                detail: line.trim(),
+                                                filePath: filePath,
+                                                events: events,
+                                                risk: riskLevel,
+                                                process: processInfo,
+                                                ts: Date.now() 
+                                            });
+                                        });
+                                        return;
+                                    }
+                                }
+                                
+                                socket.emit('file_change', { 
+                                    detail: line.trim(),
+                                    filePath: filePath,
+                                    events: events,
+                                    risk: riskLevel,
+                                    process: processInfo,
+                                    ts: Date.now() 
+                                });
+                            });
+                        } else {
+                            socket.emit('file_change', { 
+                                detail: line.trim(),
+                                filePath: filePath,
+                                events: events,
+                                risk: riskLevel,
+                                process: processInfo,
+                                ts: Date.now() 
+                            });
+                        }
                     });
                 }
             });
@@ -385,12 +448,30 @@ function startFileWatcherAlternative(watchPath) {
                     const files = stdout.trim().split('\n').filter(f => f);
                     files.forEach(filePath => {
                         const riskLevel = assessFileRisk(filePath, 'MODIFY');
-                        socket.emit('file_change', {
-                            detail: `${filePath} MODIFY`,
-                            filePath: filePath,
-                            events: 'MODIFY',
-                            risk: riskLevel,
-                            ts: Date.now()
+                        
+                        // Detectar qué proceso está modificando el archivo
+                        exec(`lsof "${filePath}" 2>/dev/null | head -1`, { timeout: 2000 }, (err, stdout) => {
+                            let processInfo = null;
+                            
+                            if (!err && stdout && stdout.trim()) {
+                                const parts = stdout.trim().split(/\s+/);
+                                if (parts.length >= 2) {
+                                    processInfo = {
+                                        command: parts[0],
+                                        pid: parts[1],
+                                        user: parts[2] || 'unknown'
+                                    };
+                                }
+                            }
+                            
+                            socket.emit('file_change', {
+                                detail: `${filePath} MODIFY`,
+                                filePath: filePath,
+                                events: 'MODIFY',
+                                risk: riskLevel,
+                                process: processInfo,
+                                ts: Date.now()
+                            });
                         });
                     });
                 }
@@ -656,20 +737,42 @@ async function checkAllSites() {
         results.push(...batchResults);
     }
     
-    // Actualizar cache y enviar resultados
+    // Actualizar cache y detectar cambios de estado
+    const changedSites = [];
+    const downSites = [];
+    const errorSites = [];
+    
     results.forEach(result => {
+        const previousStatus = siteStatusHistory.get(result.domain);
+        const currentStatus = result.status;
+        
+        // Solo notificar si el estado cambió
+        if (previousStatus && previousStatus !== currentStatus) {
+            changedSites.push({
+                ...result,
+                previousStatus: previousStatus,
+                statusChanged: true
+            });
+            
+            if (currentStatus === 'down') {
+                downSites.push(result);
+            } else if (currentStatus === 'error') {
+                errorSites.push(result);
+            }
+        }
+        
+        // Actualizar historial
+        siteStatusHistory.set(result.domain, currentStatus);
         discoveredSites.set(result.domain, result);
     });
     
     // Enviar estado de todos los sitios
     socket.emit('sites_status', results);
     
-    // Enviar alertas si hay sitios caídos o con errores
-    const downSites = results.filter(s => s.status === 'down');
-    const errorSites = results.filter(s => s.status === 'error');
-    
-    if (downSites.length > 0 || errorSites.length > 0) {
+    // Solo enviar alertas si hay cambios de estado
+    if (changedSites.length > 0) {
         socket.emit('sites_alert', {
+            changed: changedSites,
             down: downSites,
             errors: errorSites,
             timestamp: Date.now()
