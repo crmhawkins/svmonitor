@@ -32,6 +32,21 @@ module.exports = {
         process.env.EXCLUDED_PROCESSES.split(',') : 
         ['dashboard/server.js', 'agent/agent.js', 'node dashboard', 'node agent'],
     
+    // Archivos y patrones a ignorar en el monitoreo de archivos
+    ignoredFiles: process.env.IGNORED_FILES ?
+        process.env.IGNORED_FILES.split(',') :
+        [
+            'all_strings.txt',
+            '*.log',
+            '*.tmp',
+            '*.cache',
+            '*.swp',
+            '*.swo',
+            '.git/',
+            'node_modules/',
+            '.pm2/'
+        ],
+    
     // Configuración de Socket.IO
     socketIO: {
         cors: {

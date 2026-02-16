@@ -347,6 +347,12 @@ function startInotifyWatcher(watchPath) {
             lines.forEach(line => {
                 if (line.trim()) {
                     const [filePath, events] = line.split(' ');
+                    
+                    // Filtrar archivos ignorados
+                    if (shouldIgnoreFile(filePath)) {
+                        return;
+                    }
+                    
                     const riskLevel = assessFileRisk(filePath, events);
                     
                     // Detectar qué proceso está modificando el archivo
@@ -448,6 +454,11 @@ function startFileWatcherAlternative(watchPath) {
                 if (!err && stdout) {
                     const files = stdout.trim().split('\n').filter(f => f);
                     files.forEach(filePath => {
+                        // Filtrar archivos ignorados
+                        if (shouldIgnoreFile(filePath)) {
+                            return;
+                        }
+                        
                         const riskLevel = assessFileRisk(filePath, 'MODIFY');
                         
                         // Detectar qué proceso está modificando el archivo
@@ -483,6 +494,41 @@ function startFileWatcherAlternative(watchPath) {
     
     fileWatcher = { kill: () => clearInterval(fileCheckInterval) };
     console.log('✅ Monitor de archivos activo (método alternativo)');
+}
+
+// Verificar si un archivo debe ser ignorado
+function shouldIgnoreFile(filePath) {
+    if (!filePath) return true;
+    
+    const path = filePath.toLowerCase();
+    const ignoredFiles = config.ignoredFiles || [];
+    
+    for (const pattern of ignoredFiles) {
+        const patternLower = pattern.toLowerCase();
+        
+        // Patrón exacto
+        if (path.includes(patternLower)) {
+            return true;
+        }
+        
+        // Patrón con wildcard (*)
+        if (patternLower.includes('*')) {
+            const regexPattern = patternLower
+                .replace(/\./g, '\\.')
+                .replace(/\*/g, '.*');
+            const regex = new RegExp(regexPattern);
+            if (regex.test(path) || path.endsWith(patternLower.replace('*', ''))) {
+                return true;
+            }
+        }
+        
+        // Patrón de carpeta (termina con /)
+        if (patternLower.endsWith('/') && path.includes(patternLower)) {
+            return true;
+        }
+    }
+    
+    return false;
 }
 
 // Evaluar riesgo de archivo según su ruta y tipo de evento

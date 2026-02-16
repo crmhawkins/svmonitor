@@ -201,6 +201,64 @@ function initSOCDirectories() {
 
 initSOCDirectories();
 
+// Función para serializar JSON de forma segura sin desbordar memoria
+function safeJSONStringify(obj, space = 0) {
+    try {
+        let depth = 0;
+        const maxDepth = 5;
+        
+        // Limitar tamaño total del JSON (aproximadamente 500KB)
+        const result = JSON.stringify(obj, (key, value) => {
+            // Limitar profundidad (aproximado)
+            if (key && typeof value === 'object' && value !== null) {
+                depth++;
+                if (depth > maxDepth) {
+                    depth--;
+                    return '"[Max depth reached]"';
+                }
+            }
+            
+            // Limitar tamaño de strings largos
+            if (typeof value === 'string' && value.length > 1000) {
+                return value.substring(0, 1000) + '...[truncated]';
+            }
+            
+            // Limitar arrays grandes
+            if (Array.isArray(value) && value.length > 50) {
+                return value.slice(0, 50).concat(`[${value.length - 50} more items]`);
+            }
+            
+            // Limitar objetos grandes
+            if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+                const keys = Object.keys(value);
+                if (keys.length > 20) {
+                    const limited = {};
+                    let count = 0;
+                    for (const k of keys) {
+                        if (count++ < 20) {
+                            limited[k] = value[k];
+                        }
+                    }
+                    limited['...[truncated]'] = `${keys.length - 20} more properties`;
+                    return limited;
+                }
+            }
+            
+            return value;
+        }, space);
+        
+        // Si el resultado es muy grande, truncarlo
+        if (result && result.length > 500000) {
+            return result.substring(0, 500000) + '\n...[JSON truncated due to size]';
+        }
+        
+        return result || '{}';
+    } catch (error) {
+        console.error('Error en safeJSONStringify:', error);
+        return `{"error": "JSON serialization failed: ${error.message}"}`;
+    }
+}
+
 // Almacenamiento de investigación SOC
 const socInvestigations = [];
 let suspiciousLogCount = 0;
@@ -269,7 +327,7 @@ async function runSOCInvestigation() {
                 ventana_tiempo: 'Últimos 5 minutos',
                 timestamp: new Date().toISOString()
             },
-            procesos_sospechosos: recentProcesses.map(p => ({
+            procesos_sospechosos: recentProcesses.slice(0, 20).map(p => ({
                 pid: p.pid,
                 comando: p.command,
                 cpu: p.cpu,
@@ -277,10 +335,9 @@ async function runSOCInvestigation() {
                 tiempo_ejecucion: p.time,
                 razon_sospechosa: p.reason,
                 usuario: p.user || 'desconocido',
-                timestamp: new Date(p.timestamp).toISOString(),
-                detalles_completos: p
+                timestamp: new Date(p.timestamp).toISOString()
             })),
-            archivos_modificados: recentFiles.map(f => ({
+            archivos_modificados: recentFiles.slice(0, 20).map(f => ({
                 ruta: f.filePath || f.detail?.split(' ')[0] || f.detail || 'desconocido',
                 evento: f.events || 'MODIFY',
                 riesgo: f.risk || 'medium',
@@ -289,20 +346,17 @@ async function runSOCInvestigation() {
                     pid: f.process.pid,
                     comando: f.process.command,
                     usuario: f.process.user
-                } : null,
-                detalles_completos: f
+                } : null
             })),
-            conexiones_red: recentNetwork.map(n => ({
-                conexion: n.detail || n.data || (typeof n === 'string' ? n : JSON.stringify(n)),
+            conexiones_red: recentNetwork.slice(0, 20).map(n => ({
+                conexion: n.detail || n.data || (typeof n === 'string' ? n : String(n).substring(0, 200)),
                 timestamp: new Date(n.timestamp || Date.now()).toISOString(),
-                riesgo: n.risk || 'medium',
-                detalles_completos: n
+                riesgo: n.risk || 'medium'
             })),
-            tareas_crontab: recentCrontab.map(c => ({
+            tareas_crontab: recentCrontab.slice(0, 15).map(c => ({
                 usuario: c.user || 'desconocido',
                 tarea: c.cron || c.command || 'desconocido',
-                timestamp: new Date(c.timestamp || Date.now()).toISOString(),
-                detalles_completos: c
+                timestamp: new Date(c.timestamp || Date.now()).toISOString()
             })),
             contexto_sistema: {
                 sistema_operativo: process.platform,
@@ -354,7 +408,7 @@ RESUMEN:
 - Ventana de tiempo: ${suspiciousData.resumen.ventana_tiempo}
 
 DATOS COMPLETOS:
-${JSON.stringify(suspiciousData, null, 2)}
+${safeJSONStringify(suspiciousData, 2)}
 
 INSTRUCCIONES DE GENERACIÓN DE COMANDOS:
 
