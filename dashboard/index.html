@@ -1300,15 +1300,25 @@
                 // Ordenar por timestamp (más reciente primero) y cargar
                 const sortedNetwork = history.network.sort((a, b) => b.timestamp - a.timestamp);
                 
+                // Actualizar systemData con historial de red
+                systemData.network = [];
                 sortedNetwork.forEach(item => {
-                    // Crear entrada directamente sin usar updateNetwork para evitar duplicados
                     const lines = (item.data || '').split('\n').filter(l => l.trim());
                     lines.forEach(line => {
                         if (line.trim()) {
                             createNetworkEntry(line, netEl);
+                            const risk = line.includes('SYN-SENT') || line.includes('SYN_SENT') ? 'critical' :
+                                       (line.includes('php') || line.includes('python') || line.includes('perl')) && 
+                                       /(\d{1,3}\.){3}\d{1,3}/.test(line) && !line.includes('127.0.0.1') ? 'high' : 'medium';
+                            systemData.network.push({
+                                detail: line,
+                                risk: risk,
+                                timestamp: item.timestamp || Date.now()
+                            });
                         }
                     });
                 });
+                if (systemData.network.length > 50) systemData.network = systemData.network.slice(0, 50);
             }
             
             // Cargar historial de archivos
@@ -1322,7 +1332,10 @@
                 // Ordenar por timestamp (más reciente primero) y cargar
                 const sortedFiles = history.files.sort((a, b) => b.timestamp - a.timestamp);
                 
-                sortedFiles.forEach(file => {
+                // Actualizar systemData con historial de archivos
+                systemData.files = sortedFiles.slice(0, 50);
+                
+                sortedFiles.slice(0, 50).forEach(file => {
                     createFileEntry(file, fileEl);
                 });
             }
@@ -1348,6 +1361,8 @@
                 const latestGroup = Object.keys(processGroups).sort((a, b) => b - a)[0];
                 if (latestGroup) {
                     processEl.innerHTML = '';
+                    // Actualizar systemData con el grupo más reciente
+                    systemData.processes = processGroups[latestGroup];
                     processGroups[latestGroup].forEach(proc => {
                         createProcessEntry(proc, processEl);
                     });
@@ -1375,6 +1390,8 @@
                 const latestGroup = Object.keys(crontabGroups).sort((a, b) => b - a)[0];
                 if (latestGroup) {
                     crontabEl.innerHTML = '';
+                    // Actualizar systemData con el grupo más reciente
+                    systemData.crontab = crontabGroups[latestGroup];
                     crontabGroups[latestGroup].forEach(cron => {
                         createCrontabEntry(cron, crontabEl);
                     });
@@ -1593,6 +1610,21 @@
             let hasThreat = false;
             let threatLevel = 'BAJA';
             
+            // Actualizar systemData para la IA
+            lines.forEach(line => {
+                if (line.trim()) {
+                    const risk = line.includes('SYN-SENT') || line.includes('SYN_SENT') ? 'critical' :
+                               (line.includes('php') || line.includes('python') || line.includes('perl')) && 
+                               /(\d{1,3}\.){3}\d{1,3}/.test(line) && !line.includes('127.0.0.1') ? 'high' : 'medium';
+                    systemData.network.push({
+                        detail: line,
+                        risk: risk,
+                        timestamp: Date.now()
+                    });
+                    if (systemData.network.length > 50) systemData.network.shift();
+                }
+            });
+            
             lines.forEach(line => {
                 if (!line.trim()) return;
                 
@@ -1750,6 +1782,10 @@
             while (fileEl.children.length > 50) {
                 fileEl.removeChild(fileEl.lastChild);
             }
+            
+            // Actualizar systemData para la IA
+            systemData.files.push(data);
+            if (systemData.files.length > 50) systemData.files.shift();
         }
         
         function triggerPanic() {
@@ -1911,6 +1947,9 @@
                 processEl.appendChild(entry);
             });
             
+            // Actualizar systemData para la IA
+            systemData.processes = processes;
+            
             // Actualizar nivel de amenaza si hay procesos sospechosos
             if (processes.length > 0) {
                 const threatEl = document.getElementById('threat');
@@ -1939,6 +1978,9 @@
             if (!skipEmptyCheck) {
                 crontabEl.innerHTML = '';
             }
+            
+            // Actualizar systemData para la IA
+            systemData.crontab = crontabs || [];
             
             if (crontabs && crontabs.length > 0) {
                 crontabs.forEach(cron => {
@@ -2065,34 +2107,76 @@
             try {
                 const systemData = collectSystemData();
                 
-                const prompt = `Eres un experto en ciberseguridad y análisis forense. Analiza DETALLADAMENTE los siguientes datos de un sistema de monitoreo de seguridad y proporciona un análisis completo.
+                // Validar que hay datos antes de analizar
+                const hasData = systemData.processes.length > 0 || 
+                               systemData.files.length > 0 || 
+                               systemData.network.length > 0 || 
+                               systemData.crontab.length > 0;
+                
+                if (!hasData) {
+                    loadingMsg.remove();
+                    addAIMessage('assistant', '⚠️ No hay datos sospechosos para analizar en este momento. El sistema está limpio o no se han detectado eventos recientes.');
+                    return;
+                }
+                
+                const prompt = `Eres un analista SOC senior especializado en análisis forense y detección de amenazas. Tu trabajo es analizar EXCLUSIVAMENTE los datos reales proporcionados y generar un análisis específico basado en ellos.
 
-IMPORTANTE: Lee cuidadosamente TODOS los datos proporcionados, especialmente:
-- Los procesos PHP sospechosos (PID, comandos, CPU, memoria, razones)
-- Los archivos modificados (rutas completas, eventos, procesos que los modificaron)
-- Las conexiones de red sospechosas
-- Las tareas de crontab sospechosas
+REGLAS CRÍTICAS:
+1. NO proporciones consejos genéricos de seguridad
+2. NO digas "no hay amenazas" si hay datos en los arrays
+3. Analiza CADA proceso, archivo, conexión y tarea específicamente
+4. Si hay datos, DEBES analizarlos y explicar qué significan
+5. Correlaciona los eventos para identificar patrones de ataque
 
-1. RECONOCIMIENTO DEL ATAQUE:
-   - Identifica QUÉ TIPO DE AMENAZA o ataque está ocurriendo basándote en los datos reales
-   - Explica los INDICADORES DE COMPROMISO (IOCs) detectados específicamente:
-     * Procesos sospechosos y qué hacen
-     * Archivos modificados y qué significan
-     * Conexiones de red anómalas
-     * Tareas programadas maliciosas
-   - Describe el COMPORTAMIENTO SOSPECHOSO observado con detalles concretos
-   - Correlaciona los diferentes eventos para identificar patrones de ataque
-
-2. MITIGACIÓN DEL ATAQUE:
-   - Proporciona pasos ESPECÍFICOS y ORDENADOS para mitigar la amenaza
-   - Incluye COMANDOS EXACTOS de Linux cuando sea necesario
-   - Prioriza las acciones MÁS CRÍTICAS primero
-   - Explica QUÉ hace cada comando antes de ejecutarlo
-
-Datos completos del sistema:
+DATOS DEL SISTEMA A ANALIZAR:
 ${JSON.stringify(systemData, null, 2)}
 
-Responde en español, de forma clara, estructurada y DETALLADA. No uses información genérica, analiza los datos reales proporcionados.`;
+INSTRUCCIONES DE ANÁLISIS:
+
+1. RECONOCIMIENTO DEL ATAQUE:
+   Analiza CADA elemento en los arrays proporcionados:
+   
+   - PROCESOS SOSPECHOSOS (${systemData.processes.length} encontrados):
+     * Para CADA proceso, identifica: PID, comando ejecutado, razón de sospecha, uso de recursos
+     * Explica QUÉ hace cada comando sospechoso
+     * Identifica si hay procesos relacionados o patrones
+     * Determina el tipo de amenaza (backdoor, miner, bot, etc.)
+   
+   - ARCHIVOS MODIFICADOS (${systemData.files.length} encontrados):
+     * Para CADA archivo, analiza: ruta completa, tipo de evento (CREATE/MODIFY/DELETE), nivel de riesgo
+     * Identifica el proceso que modificó cada archivo
+     * Determina si las rutas son sospechosas (/tmp, /var/tmp, wp-content/uploads, etc.)
+     * Explica qué tipo de ataque podría estar relacionado
+   
+   - CONEXIONES DE RED (${systemData.network.length} encontradas):
+     * Para CADA conexión, analiza: dirección IP, puerto, protocolo, estado
+     * Identifica conexiones salientes desde PHP/Python/Perl
+     * Determina si son conexiones legítimas o maliciosas
+     * Correlaciona con procesos y archivos
+   
+   - TAREAS CRONTAB (${systemData.crontab.length} encontradas):
+     * Para CADA tarea, analiza: usuario, comando programado, frecuencia
+     * Identifica tareas sospechosas o no autorizadas
+     * Explica qué hace cada tarea y por qué es sospechosa
+
+2. CORRELACIÓN Y PATRONES:
+   - Relaciona procesos con archivos modificados
+   - Relaciona procesos con conexiones de red
+   - Identifica cadenas de ataque (ej: proceso → modifica archivo → establece conexión)
+   - Determina el vector de ataque inicial
+
+3. MITIGACIÓN ESPECÍFICA:
+   Basándote en los datos analizados, proporciona:
+   - Comandos EXACTOS de Linux para investigar cada proceso sospechoso
+   - Comandos para analizar cada archivo modificado
+   - Comandos para bloquear conexiones maliciosas
+   - Comandos para eliminar tareas crontab maliciosas
+   - Orden de prioridad (qué hacer primero)
+   - Explicación de QUÉ hace cada comando antes de ejecutarlo
+
+IMPORTANTE: Si hay datos en los arrays, DEBES analizarlos. No digas "no hay amenazas" si hay procesos, archivos o conexiones listadas. Analiza cada uno específicamente.
+
+Responde en español, de forma estructurada y DETALLADA.`;
                 
                 const response = await fetch('/api/ai/analyze', {
                     method: 'POST',
@@ -2148,9 +2232,9 @@ Responde en español, de forma clara, estructurada y DETALLADA. No uses informac
                 }
                 
                 // Si la pregunta es sobre el sistema, agregar datos actuales
-                if (message.toLowerCase().includes('sistema') || message.toLowerCase().includes('amenaza') || message.toLowerCase().includes('ataque')) {
-                    const systemData = collectSystemData();
-                    contextPrompt += `\n\nDatos actuales del sistema:\n${JSON.stringify(systemData, null, 2)}`;
+                if (message.toLowerCase().includes('sistema') || message.toLowerCase().includes('amenaza') || message.toLowerCase().includes('ataque') || message.toLowerCase().includes('proceso') || message.toLowerCase().includes('archivo') || message.toLowerCase().includes('red')) {
+                    const currentSystemData = collectSystemData();
+                    contextPrompt += `\n\nIMPORTANTE: Analiza SOLO estos datos reales del sistema. No des consejos genéricos.\n\nDatos actuales del sistema:\n${JSON.stringify(currentSystemData, null, 2)}`;
                 }
                 
                 const response = await fetch('/api/ai/analyze', {
@@ -2226,33 +2310,7 @@ Responde en español, de forma clara, estructurada y DETALLADA. No uses informac
             return div.innerHTML;
         }
         
-        // Actualizar datos del sistema cuando lleguen nuevos datos
-        socket?.on('ui_process', (data) => {
-            if (data && Array.isArray(data)) {
-                systemData.processes = data;
-            }
-        });
-        
-        socket?.on('ui_network', (data) => {
-            if (data) {
-                systemData.network.push({ data, timestamp: Date.now() });
-                if (systemData.network.length > 50) systemData.network.shift();
-            }
-        });
-        
-        socket?.on('ui_file', (data) => {
-            if (data) {
-                systemData.files.push(data);
-                if (systemData.files.length > 50) systemData.files.shift();
-            }
-        });
-        
-        socket?.on('ui_crontab', (data) => {
-            if (data && Array.isArray(data)) {
-                systemData.crontab = data;
-            }
-        });
-        
+        // Actualizar datos del sistema cuando lleguen nuevos datos (ya se actualiza en las funciones update)
         socket?.on('ui_sites', (data) => {
             if (data && Array.isArray(data)) {
                 systemData.sites = data;
