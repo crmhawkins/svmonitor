@@ -881,17 +881,8 @@
     </div>
     
     <script>
-        // Verificar autenticación al cargar
-        fetch('/api/auth/check')
-            .then(res => res.json())
-            .then(data => {
-                if (!data.authenticated) {
-                    window.location.href = '/';
-                }
-            })
-            .catch(() => {
-                window.location.href = '/';
-            });
+        // El servidor ya maneja la autenticación, no necesitamos verificar aquí
+        // para evitar bucles de redirección
         
         let socket;
         let reconnectAttempts = 0;

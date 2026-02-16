@@ -182,14 +182,21 @@
             }, 5000);
         }
         
-        // Verificar si ya está autenticado
-        fetch('/api/auth/check')
-            .then(res => res.json())
-            .then(data => {
-                if (data.authenticated) {
-                    window.location.href = '/';
-                }
-            });
+        // Verificar si ya está autenticado (solo una vez al cargar)
+        let authCheckDone = false;
+        if (!authCheckDone) {
+            authCheckDone = true;
+            fetch('/api/auth/check')
+                .then(res => res.json())
+                .then(data => {
+                    if (data.authenticated) {
+                        window.location.href = '/';
+                    }
+                })
+                .catch(() => {
+                    // Ignorar errores, el usuario puede intentar login
+                });
+        }
     </script>
 </body>
 </html>
