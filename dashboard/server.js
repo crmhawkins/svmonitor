@@ -29,8 +29,15 @@ io.on('connection', (socket) => {
     const clientIp = socket.handshake.address;
     console.log(`✅ Cliente conectado desde ${clientIp}`);
     
-    // Validar que la conexión sea local
-    if (!clientIp.includes('127.0.0.1') && !clientIp.includes('::1') && !clientIp.includes('::ffff:127.0.0.1')) {
+    // Validar que la conexión sea local (permitir también conexiones a través de nginx proxy)
+    // Nginx puede enviar conexiones desde 127.0.0.1 cuando hace proxy
+    const isLocal = clientIp.includes('127.0.0.1') || 
+                    clientIp.includes('::1') || 
+                    clientIp.includes('::ffff:127.0.0.1') ||
+                    clientIp === '::ffff:127.0.0.1' ||
+                    socket.handshake.headers['x-forwarded-for']?.includes('127.0.0.1');
+    
+    if (!isLocal) {
         console.warn(`⚠️ Intento de conexión desde IP externa: ${clientIp}`);
         socket.disconnect();
         return;
@@ -51,6 +58,18 @@ io.on('connection', (socket) => {
     socket.on('file_change', (data) => {
         if (data && typeof data === 'object') {
             io.emit('ui_file', data);
+        }
+    });
+    
+    socket.on('process_alert', (data) => {
+        if (data && Array.isArray(data)) {
+            io.emit('ui_process', data);
+        }
+    });
+    
+    socket.on('crontab_alert', (data) => {
+        if (data && Array.isArray(data)) {
+            io.emit('ui_crontab', data);
         }
     });
     
@@ -75,15 +94,19 @@ function startServer() {
     
     server.listen(port, host, () => {
         console.log(`✅ Dashboard activo en http://${host}:${port}`);
+        if (port === 3813) {
+            console.log(`🌐 Nginx debe redirigir el puerto 80 a este puerto interno`);
+            console.log(`📋 Configura nginx para svmonitor.herasoft.ai -> http://127.0.0.1:${port}`);
+        }
         console.log(`🔒 Comunicaciones restringidas a localhost únicamente`);
     }).on('error', (err) => {
         if (err.code === 'EACCES' || err.code === 'EADDRINUSE') {
-            console.warn(`⚠️ No se pudo usar el puerto ${port} (requiere permisos de administrador)`);
+            console.warn(`⚠️ No se pudo usar el puerto ${port}`);
             console.log(`🔄 Intentando puerto alternativo ${config.dashboardPortFallback}...`);
             
             server.listen(config.dashboardPortFallback, host, () => {
                 console.log(`✅ Dashboard activo en http://${host}:${config.dashboardPortFallback}`);
-                console.log(`💡 Para usar el puerto 80, ejecuta como administrador`);
+                console.log(`💡 Actualiza la configuración de nginx para usar este puerto`);
                 console.log(`🔒 Comunicaciones restringidas a localhost únicamente`);
             }).on('error', (err2) => {
                 console.error('❌ Error al iniciar el servidor:', err2);

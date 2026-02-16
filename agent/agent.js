@@ -26,6 +26,9 @@ const socket = io(CENTRAL_URL, {
 
 let healthInterval = null;
 let networkInterval = null;
+let processInterval = null;
+let fileScanInterval = null;
+let crontabInterval = null;
 let fileWatcher = null;
 
 // Manejo de conexión
@@ -74,10 +77,39 @@ function startMonitoring() {
         }
     }, config.healthCheckInterval);
 
-    // Alertas de red (compatible Windows/Linux)
+    // Alertas de red mejoradas - detectar conexiones salientes desde PHP
     networkInterval = setInterval(() => {
         try {
-            if (isWindows) {
+            if (isLinux) {
+                // Detectar conexiones salientes desde PHP hacia puertos sospechosos (80, 443, 25)
+                exec("ss -antp 2>/dev/null | grep -E 'php.*:443|php.*:80|php.*:25' | grep -E 'ESTAB|SYN-SENT'", 
+                    { timeout: 2000 }, 
+                    (err, stdout) => {
+                        if (!err && stdout) {
+                            socket.emit('network_alert', stdout);
+                        }
+                    }
+                );
+                
+                // También detectar cualquier conexión PHP persistente
+                exec("ss -antp 2>/dev/null | grep php | grep ESTAB", 
+                    { timeout: 2000 }, 
+                    (err, stdout) => {
+                        if (!err && stdout) {
+                            const lines = stdout.split('\n').filter(l => l.trim());
+                            // Filtrar solo conexiones externas (no localhost)
+                            const external = lines.filter(line => 
+                                !line.includes('127.0.0.1') && 
+                                !line.includes('::1') &&
+                                (line.includes(':443') || line.includes(':80') || line.includes(':25'))
+                            );
+                            if (external.length > 0) {
+                                socket.emit('network_alert', external.join('\n'));
+                            }
+                        }
+                    }
+                );
+            } else {
                 // Windows: usar netstat
                 exec('netstat -an | findstr "ESTABLISHED SYN_SENT"', { timeout: 1000 }, (err, stdout) => {
                     if (!err && stdout) {
@@ -89,54 +121,366 @@ function startMonitoring() {
                         }
                     }
                 });
-            } else {
-                // Linux: usar ss o netstat
-                exec("ss -atpun 2>/dev/null | grep -E 'php|SYN_SENT' || netstat -tulpn 2>/dev/null | grep -E 'php|SYN_SENT'", 
-                    { timeout: 1000 }, 
-                    (err, stdout) => {
-                        if (!err && stdout) {
-                            socket.emit('network_alert', stdout);
-                        }
-                    }
-                );
             }
         } catch (error) {
             console.error('❌ Error al verificar red:', error);
         }
     }, config.networkCheckInterval);
 
-    // Monitor de archivos (solo Linux con inotify)
+    // Monitoreo de procesos PHP sospechosos
     if (isLinux) {
-        try {
-            const watchPath = process.env.WATCH_PATH || '/var/www/vhosts';
-            fileWatcher = spawn('inotifywait', ['-mr', '-e', 'modify,create,delete', watchPath], {
-                stdio: ['ignore', 'pipe', 'pipe']
-            });
-            
-            fileWatcher.stdout.on('data', (data) => {
-                socket.emit('file_change', { 
-                    detail: data.toString().trim(), 
-                    ts: Date.now() 
-                });
-            });
-            
-            fileWatcher.stderr.on('data', (data) => {
-                // Ignorar errores menores de inotifywait
-                if (!data.toString().includes('Couldn\'t watch')) {
-                    console.warn('⚠️ inotifywait:', data.toString().trim());
-                }
-            });
-            
-            fileWatcher.on('error', (error) => {
-                console.warn('⚠️ inotifywait no disponible:', error.message);
-                console.log('💡 El monitoreo de archivos está deshabilitado');
-            });
-        } catch (error) {
-            console.warn('⚠️ No se pudo iniciar el monitor de archivos:', error.message);
-        }
+        processInterval = setInterval(() => {
+            try {
+                // Buscar procesos PHP que llevan mucho tiempo activos (posibles zombies)
+                exec("ps aux | grep '[p]hp' | awk '{print $2, $3, $4, $9, $10, $11, $12, $13, $14, $15, $16, $17}'", 
+                    { timeout: 2000 }, 
+                    (err, stdout) => {
+                        if (!err && stdout) {
+                            const processes = [];
+                            const lines = stdout.trim().split('\n').filter(l => l.trim());
+                            
+                            lines.forEach(line => {
+                                const parts = line.trim().split(/\s+/);
+                                if (parts.length >= 11) {
+                                    const pid = parts[0];
+                                    const cpu = parseFloat(parts[1]) || 0;
+                                    const mem = parseFloat(parts[2]) || 0;
+                                    const time = parts[3]; // Tiempo de ejecución
+                                    const command = parts.slice(10).join(' ');
+                                    
+                                    // Detectar procesos sospechosos
+                                    let suspicious = false;
+                                    let reason = '';
+                                    
+                                    // CPU alta constante
+                                    if (cpu > 20) {
+                                        suspicious = true;
+                                        reason = `CPU alto: ${cpu}%`;
+                                    }
+                                    
+                                    // Tiempo de ejecución largo (más de 1 hora)
+                                    if (time && time.includes(':')) {
+                                        const [hours, mins] = time.split(':').map(Number);
+                                        if (hours > 0 || (hours === 0 && mins > 30)) {
+                                            suspicious = true;
+                                            reason = reason ? `${reason}, Tiempo: ${time}` : `Tiempo largo: ${time}`;
+                                        }
+                                    }
+                                    
+                                    // Comandos sospechosos
+                                    if (command.includes('base64') || command.includes('eval') || 
+                                        command.includes('system') || command.includes('exec')) {
+                                        suspicious = true;
+                                        reason = reason ? `${reason}, Comando sospechoso` : 'Comando sospechoso';
+                                    }
+                                    
+                                    if (suspicious) {
+                                        processes.push({
+                                            pid,
+                                            cpu,
+                                            mem,
+                                            time,
+                                            command,
+                                            reason
+                                        });
+                                    }
+                                }
+                            });
+                            
+                            if (processes.length > 0) {
+                                socket.emit('process_alert', processes);
+                            }
+                        }
+                    }
+                );
+            } catch (error) {
+                console.error('❌ Error al verificar procesos:', error);
+            }
+        }, config.processCheckInterval);
+    }
+
+    // Escaneo periódico de firmas maliciosas en archivos PHP
+    if (isLinux) {
+        fileScanInterval = setInterval(() => {
+            try {
+                const watchPath = process.env.WATCH_PATH || '/var/www/vhosts';
+                
+                // Buscar eval( y base64_decode en archivos PHP
+                exec(`grep -rnl 'eval(' ${watchPath} --include="*.php" 2>/dev/null | head -10`, 
+                    { timeout: 10000 }, 
+                    (err, stdout) => {
+                        if (!err && stdout) {
+                            const files = stdout.trim().split('\n').filter(f => f);
+                            files.forEach(file => {
+                                socket.emit('file_change', {
+                                    detail: `Firma maliciosa detectada: eval(`,
+                                    filePath: file,
+                                    events: 'SCAN',
+                                    risk: 'critical',
+                                    ts: Date.now()
+                                });
+                            });
+                        }
+                    }
+                );
+                
+                exec(`grep -rnl 'base64_decode' ${watchPath} --include="*.php" 2>/dev/null | head -10`, 
+                    { timeout: 10000 }, 
+                    (err, stdout) => {
+                        if (!err && stdout) {
+                            const files = stdout.trim().split('\n').filter(f => f);
+                            files.forEach(file => {
+                                socket.emit('file_change', {
+                                    detail: `Firma maliciosa detectada: base64_decode`,
+                                    filePath: file,
+                                    events: 'SCAN',
+                                    risk: 'critical',
+                                    ts: Date.now()
+                                });
+                            });
+                        }
+                    }
+                );
+            } catch (error) {
+                console.error('❌ Error al escanear archivos:', error);
+            }
+        }, config.fileScanInterval);
+    }
+
+    // Monitoreo de crontab
+    if (isLinux) {
+        crontabInterval = setInterval(() => {
+            try {
+                // Verificar crontab de todos los usuarios
+                exec("for user in $(cut -f1 -d: /etc/passwd); do crontab -u $user -l 2>/dev/null | grep -v '^#' | grep -v '^$' && echo \"USER:$user\"; done", 
+                    { timeout: 5000 }, 
+                    (err, stdout) => {
+                        if (!err && stdout) {
+                            const lines = stdout.trim().split('\n').filter(l => l.trim());
+                            const suspicious = [];
+                            let currentUser = '';
+                            
+                            lines.forEach(line => {
+                                if (line.startsWith('USER:')) {
+                                    currentUser = line.replace('USER:', '');
+                                } else if (line.trim()) {
+                                    // Detectar tareas sospechosas
+                                    if (line.includes('curl') || line.includes('wget') || 
+                                        line.includes('php') || line.includes('base64') ||
+                                        line.includes('eval') || line.includes('sh -c')) {
+                                        suspicious.push({
+                                            user: currentUser,
+                                            cron: line.trim()
+                                        });
+                                    }
+                                }
+                            });
+                            
+                            if (suspicious.length > 0) {
+                                socket.emit('crontab_alert', suspicious);
+                            }
+                        }
+                    }
+                );
+            } catch (error) {
+                // Ignorar errores de usuarios sin crontab
+            }
+        }, config.crontabCheckInterval);
+    }
+
+    // Monitor de archivos (solo Linux)
+    if (isLinux) {
+        const watchPath = process.env.WATCH_PATH || '/var/www/vhosts';
+        
+        // Verificar si inotifywait está instalado
+        exec('which inotifywait', (err) => {
+            if (err) {
+                console.warn('⚠️ inotifywait no está instalado');
+                console.log('💡 Instala con: apt-get install inotify-tools (Debian/Ubuntu) o yum install inotify-tools (RHEL/CentOS)');
+                console.log('🔄 Usando método alternativo de monitoreo de archivos...');
+                
+                // Método alternativo: usar find con polling
+                startFileWatcherAlternative(watchPath);
+            } else {
+                // Usar inotifywait si está disponible
+                startInotifyWatcher(watchPath);
+            }
+        });
     } else {
         console.log('💡 Monitor de archivos disponible solo en Linux');
     }
+}
+
+// Función para iniciar inotifywait
+function startInotifyWatcher(watchPath) {
+    try {
+        fileWatcher = spawn('inotifywait', ['-mr', '-e', 'modify,create,delete', '--format', '%w%f %e', watchPath], {
+            stdio: ['ignore', 'pipe', 'pipe']
+        });
+        
+        fileWatcher.stdout.on('data', (data) => {
+            const lines = data.toString().trim().split('\n');
+            lines.forEach(line => {
+                if (line.trim()) {
+                    const [filePath, events] = line.split(' ');
+                    const riskLevel = assessFileRisk(filePath, events);
+                    
+                    socket.emit('file_change', { 
+                        detail: line.trim(),
+                        filePath: filePath,
+                        events: events,
+                        risk: riskLevel,
+                        ts: Date.now() 
+                    });
+                }
+            });
+        });
+        
+        fileWatcher.stderr.on('data', (data) => {
+            const errorMsg = data.toString().trim();
+            // Ignorar errores menores de inotifywait
+            if (!errorMsg.includes('Couldn\'t watch') && !errorMsg.includes('No such file')) {
+                console.warn('⚠️ inotifywait:', errorMsg);
+            }
+        });
+        
+        fileWatcher.on('error', (error) => {
+            console.warn('⚠️ Error al iniciar inotifywait:', error.message);
+            console.log('🔄 Cambiando a método alternativo...');
+            startFileWatcherAlternative(watchPath);
+        });
+        
+        console.log('✅ Monitor de archivos activo con inotifywait');
+    } catch (error) {
+        console.warn('⚠️ No se pudo iniciar inotifywait:', error.message);
+        startFileWatcherAlternative(watchPath);
+    }
+}
+
+// Método alternativo: usar find con polling
+function startFileWatcherAlternative(watchPath) {
+    let lastCheck = Date.now();
+    const fileCheckInterval = setInterval(() => {
+        exec(`find ${watchPath} -type f -newermt "@${Math.floor(lastCheck / 1000)}" 2>/dev/null | head -20`, 
+            { timeout: 5000 }, 
+            (err, stdout) => {
+                if (!err && stdout) {
+                    const files = stdout.trim().split('\n').filter(f => f);
+                    files.forEach(filePath => {
+                        const riskLevel = assessFileRisk(filePath, 'MODIFY');
+                        socket.emit('file_change', {
+                            detail: `${filePath} MODIFY`,
+                            filePath: filePath,
+                            events: 'MODIFY',
+                            risk: riskLevel,
+                            ts: Date.now()
+                        });
+                    });
+                }
+                lastCheck = Date.now();
+            }
+        );
+    }, 5000); // Verificar cada 5 segundos
+    
+    fileWatcher = { kill: () => clearInterval(fileCheckInterval) };
+    console.log('✅ Monitor de archivos activo (método alternativo)');
+}
+
+// Evaluar riesgo de archivo según su ruta y tipo de evento
+function assessFileRisk(filePath, events) {
+    if (!filePath) return 'low';
+    
+    const path = filePath.toLowerCase();
+    const eventStr = (events || '').toLowerCase();
+    
+    // CARPETAS CRÍTICAS - Máxima prioridad
+    // /tmp y /var/tmp - donde el malware descarga ejecutables
+    if (path.includes('/tmp/') || path.includes('/var/tmp/')) {
+        if (path.endsWith('.php') || path.endsWith('.sh') || path.endsWith('.bin') || 
+            path.endsWith('.exe') || !path.includes('.')) {
+            return 'critical';
+        }
+        return 'high';
+    }
+    
+    // wp-content/uploads - donde suben shells PHP
+    if (path.includes('wp-content/uploads') && path.endsWith('.php')) {
+        return 'critical';
+    }
+    
+    // wp-includes - archivos críticos de WordPress
+    if (path.includes('wp-includes')) {
+        if (path.includes('pluggable.php') || path.includes('script-loader.php')) {
+            return 'critical';
+        }
+        return 'high';
+    }
+    
+    // Archivos críticos del sistema
+    if (path.includes('/etc/') || path.includes('/bin/') || path.includes('/sbin/') || 
+        path.includes('/usr/bin/') || path.includes('/usr/sbin/')) {
+        return 'critical';
+    }
+    
+    // ARCHIVOS CLAVE A VIGILAR
+    // .htaccess - buscan redirigir tráfico
+    if (path.includes('.htaccess')) {
+        return 'critical';
+    }
+    
+    // index.php - primer sitio donde inyectan código
+    if (path.endsWith('index.php') || path.includes('/index.php')) {
+        if (eventStr.includes('modify')) {
+            return 'high';
+        }
+        return 'medium';
+    }
+    
+    // wp-config.php - buscan credenciales
+    if (path.includes('wp-config.php')) {
+        return 'critical';
+    }
+    
+    // Archivos PHP ejecutables (alto riesgo)
+    if (path.endsWith('.php') || path.endsWith('.php5') || path.endsWith('.phtml')) {
+        // Archivos ocultos sospechosos
+        if (path.includes('.sys_lock') || path.includes('wp-vcd.php') || 
+            path.includes('crypt.php') || path.includes('shell.php') ||
+            path.includes('backdoor') || path.includes('c99')) {
+            return 'critical';
+        }
+        
+        if (eventStr.includes('create') || eventStr.includes('delete')) {
+            return 'high';
+        }
+        return 'medium';
+    }
+    
+    // Archivos de configuración
+    if (path.endsWith('.conf') || path.endsWith('.config') || path.endsWith('.ini') || 
+        path.includes('config')) {
+        return 'high';
+    }
+    
+    // Archivos ejecutables
+    if (path.endsWith('.sh') || path.endsWith('.py') || path.endsWith('.pl') || 
+        path.endsWith('.exe') || path.endsWith('.bin')) {
+        return 'high';
+    }
+    
+    // Eliminaciones siempre son de alto riesgo
+    if (eventStr.includes('delete')) {
+        return 'high';
+    }
+    
+    // Creaciones en directorios sensibles
+    if (eventStr.includes('create') && 
+        (path.includes('www') || path.includes('public') || path.includes('html') ||
+         path.includes('vhosts'))) {
+        return 'medium';
+    }
+    
+    return 'low';
 }
 
 // Detener monitoreo
@@ -148,6 +492,18 @@ function stopMonitoring() {
     if (networkInterval) {
         clearInterval(networkInterval);
         networkInterval = null;
+    }
+    if (processInterval) {
+        clearInterval(processInterval);
+        processInterval = null;
+    }
+    if (fileScanInterval) {
+        clearInterval(fileScanInterval);
+        fileScanInterval = null;
+    }
+    if (crontabInterval) {
+        clearInterval(crontabInterval);
+        crontabInterval = null;
     }
     if (fileWatcher) {
         fileWatcher.kill();

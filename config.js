@@ -1,9 +1,9 @@
 // Configuración del sistema Sentinel
 module.exports = {
-    // Puerto del dashboard (80 requiere permisos de administrador)
-    dashboardPort: process.env.DASHBOARD_PORT || 80,
+    // Puerto interno del dashboard (nginx redirige el 80 a este puerto)
+    dashboardPort: process.env.DASHBOARD_PORT || 3813,
     
-    // Puerto alternativo si el 80 no está disponible
+    // Puerto alternativo si el 3813 no está disponible
     dashboardPortFallback: process.env.DASHBOARD_PORT_FALLBACK || 8080,
     
     // Host - solo localhost para comunicaciones internas
@@ -19,6 +19,9 @@ module.exports = {
     // Intervalos de monitoreo (en ms)
     healthCheckInterval: 3000,
     networkCheckInterval: 2000,
+    processCheckInterval: 5000,
+    fileScanInterval: 30000, // Escaneo de firmas cada 30 segundos
+    crontabCheckInterval: 60000, // Crontab cada minuto
     
     // Configuración de Socket.IO
     socketIO: {

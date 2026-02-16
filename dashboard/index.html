@@ -214,6 +214,205 @@
             border-color: #58a6ff;
             color: #58a6ff;
         }
+        
+        /* Estilos para entradas de red */
+        .network-entry {
+            padding: 4px 0;
+            border-bottom: 1px solid #21262d;
+            font-size: 0.8rem;
+        }
+        
+        .network-entry.safe {
+            color: #39ff14;
+        }
+        
+        .network-entry.warning {
+            color: #ffa657;
+        }
+        
+        .network-entry.danger {
+            color: #f85149;
+            background: rgba(218, 54, 51, 0.1);
+            padding: 4px 8px;
+            border-radius: 4px;
+            margin: 2px 0;
+        }
+        
+        .network-entry.critical {
+            color: #ff0000;
+            background: rgba(255, 0, 0, 0.2);
+            padding: 4px 8px;
+            border-radius: 4px;
+            margin: 2px 0;
+            font-weight: bold;
+            animation: blink 1s infinite;
+        }
+        
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+        
+        .network-timestamp {
+            color: #8b949e;
+            margin-right: 8px;
+        }
+        
+        .network-protocol {
+            color: #58a6ff;
+            font-weight: bold;
+        }
+        
+        .network-state {
+            display: inline-block;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 0.75rem;
+            margin: 0 4px;
+        }
+        
+        .network-state.estab {
+            background: rgba(57, 255, 20, 0.2);
+            color: #39ff14;
+        }
+        
+        .network-state.syn-sent {
+            background: rgba(255, 0, 0, 0.3);
+            color: #ff0000;
+            font-weight: bold;
+        }
+        
+        .network-state.listen {
+            background: rgba(88, 166, 255, 0.2);
+            color: #58a6ff;
+        }
+        
+        /* Estilos para archivos según riesgo */
+        .file-entry {
+            padding: 4px 0;
+            border-bottom: 1px solid #21262d;
+            font-size: 0.8rem;
+        }
+        
+        .file-entry.low {
+            color: #39ff14;
+        }
+        
+        .file-entry.medium {
+            color: #ffa657;
+        }
+        
+        .file-entry.high {
+            color: #f85149;
+            background: rgba(218, 54, 51, 0.1);
+            padding: 4px 8px;
+            border-radius: 4px;
+            margin: 2px 0;
+        }
+        
+        .file-entry.critical {
+            color: #ff0000;
+            background: rgba(255, 0, 0, 0.2);
+            padding: 4px 8px;
+            border-radius: 4px;
+            margin: 2px 0;
+            font-weight: bold;
+        }
+        
+        .file-timestamp {
+            color: #8b949e;
+            margin-right: 8px;
+        }
+        
+        .file-path {
+            word-break: break-all;
+        }
+        
+        .file-event {
+            display: inline-block;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 0.75rem;
+            margin-left: 8px;
+        }
+        
+        .file-event.modify {
+            background: rgba(88, 166, 255, 0.2);
+            color: #58a6ff;
+        }
+        
+        .file-event.create {
+            background: rgba(57, 255, 20, 0.2);
+            color: #39ff14;
+        }
+        
+        .file-event.delete {
+            background: rgba(255, 0, 0, 0.3);
+            color: #ff0000;
+            font-weight: bold;
+        }
+        
+        /* Estilos para procesos */
+        .process-entry {
+            padding: 8px;
+            margin: 4px 0;
+            border-left: 3px solid;
+            background: rgba(218, 54, 51, 0.1);
+            font-size: 0.85rem;
+        }
+        
+        .process-entry.critical {
+            border-color: #ff0000;
+            background: rgba(255, 0, 0, 0.15);
+        }
+        
+        .process-entry.high {
+            border-color: #f85149;
+            background: rgba(248, 81, 73, 0.1);
+        }
+        
+        .process-pid {
+            color: #58a6ff;
+            font-weight: bold;
+        }
+        
+        .process-metrics {
+            color: #8b949e;
+            font-size: 0.8rem;
+            margin: 4px 0;
+        }
+        
+        .process-command {
+            color: #c9d1d9;
+            word-break: break-all;
+            margin-top: 4px;
+        }
+        
+        .process-reason {
+            color: #ffa657;
+            font-weight: bold;
+            margin-top: 4px;
+        }
+        
+        /* Estilos para crontab */
+        .crontab-entry {
+            padding: 8px;
+            margin: 4px 0;
+            border-left: 3px solid #f85149;
+            background: rgba(218, 54, 51, 0.1);
+            font-size: 0.85rem;
+        }
+        
+        .crontab-user {
+            color: #58a6ff;
+            font-weight: bold;
+        }
+        
+        .crontab-command {
+            color: #c9d1d9;
+            word-break: break-all;
+            margin-top: 4px;
+        }
     </style>
 </head>
 <body>
@@ -252,6 +451,17 @@
         <div class="console-wrapper">
             <h3>📂 ARCHIVOS</h3>
             <pre id="file" class="console"><span class="empty-state">Esperando cambios de archivos...</span></pre>
+        </div>
+    </div>
+    
+    <div class="console-container" style="margin-top: 20px;">
+        <div class="console-wrapper">
+            <h3>⚙️ PROCESOS PHP SOSPECHOSOS</h3>
+            <div id="process" class="console"><span class="empty-state">No se detectaron procesos sospechosos...</span></div>
+        </div>
+        <div class="console-wrapper">
+            <h3>⏰ CRONTAB</h3>
+            <div id="crontab" class="console"><span class="empty-state">No se detectaron tareas sospechosas...</span></div>
         </div>
     </div>
     
@@ -315,6 +525,18 @@
                     updateFiles(data);
                 }
             });
+            
+            socket.on('ui_process', (data) => {
+                if (data && Array.isArray(data)) {
+                    updateProcesses(data);
+                }
+            });
+            
+            socket.on('ui_crontab', (data) => {
+                if (data && Array.isArray(data)) {
+                    updateCrontab(data);
+                }
+            });
         }
         
         function updateStatus(connected) {
@@ -360,21 +582,109 @@
                 netEl.innerHTML = '';
             }
             
-            // Agregar nueva entrada
-            const timestamp = new Date().toLocaleTimeString();
-            const entry = `[${timestamp}] ${data}\n`;
-            netEl.textContent = entry + netEl.textContent;
+            // Parsear y formatear las conexiones de red
+            const lines = data.split('\n').filter(line => line.trim());
+            let hasThreat = false;
+            let threatLevel = 'BAJA';
             
-            // Limitar a 100 líneas
-            const lines = netEl.textContent.split('\n');
-            if (lines.length > 100) {
-                netEl.textContent = lines.slice(0, 100).join('\n');
+            lines.forEach(line => {
+                if (!line.trim()) return;
+                
+                const entry = document.createElement('div');
+                entry.className = 'network-entry';
+                
+                const timestamp = new Date().toLocaleTimeString();
+                const timestampSpan = document.createElement('span');
+                timestampSpan.className = 'network-timestamp';
+                timestampSpan.textContent = `[${timestamp}]`;
+                entry.appendChild(timestampSpan);
+                
+                // Detectar tipo de conexión y nivel de amenaza
+                let riskLevel = 'safe';
+                let stateClass = '';
+                let stateText = '';
+                
+                if (line.includes('SYN-SENT') || line.includes('SYN_SENT')) {
+                    riskLevel = 'critical';
+                    hasThreat = true;
+                    threatLevel = 'CRÍTICA';
+                    stateClass = 'syn-sent';
+                    stateText = 'SYN-SENT';
+                } else if (line.includes('ESTAB') || line.includes('ESTABLISHED')) {
+                    // Verificar si es conexión externa sospechosa
+                    const hasExternalIP = /(\d{1,3}\.){3}\d{1,3}/.test(line);
+                    const isLocalhost = line.includes('127.0.0.1') || line.includes('::1');
+                    
+                    if (hasExternalIP && !isLocalhost) {
+                        // Verificar si es PHP u otro proceso sospechoso
+                        if (line.includes('php') || line.includes('python') || line.includes('perl')) {
+                            riskLevel = 'danger';
+                            hasThreat = true;
+                            if (threatLevel !== 'CRÍTICA') threatLevel = 'ALTA';
+                        } else {
+                            riskLevel = 'warning';
+                            if (threatLevel === 'BAJA') threatLevel = 'MEDIA';
+                        }
+                    }
+                    stateClass = 'estab';
+                    stateText = 'ESTAB';
+                } else if (line.includes('LISTEN')) {
+                    stateClass = 'listen';
+                    stateText = 'LISTEN';
+                }
+                
+                entry.classList.add(riskLevel);
+                
+                // Extraer información de la línea
+                const protocolMatch = line.match(/(tcp|udp|tcp6|udp6)/i);
+                const protocol = protocolMatch ? protocolMatch[1].toUpperCase() : 'TCP';
+                
+                const protocolSpan = document.createElement('span');
+                protocolSpan.className = 'network-protocol';
+                protocolSpan.textContent = protocol;
+                entry.appendChild(protocolSpan);
+                
+                if (stateText) {
+                    const stateSpan = document.createElement('span');
+                    stateSpan.className = `network-state ${stateClass}`;
+                    stateSpan.textContent = stateText;
+                    entry.appendChild(stateSpan);
+                }
+                
+                // Agregar información de la conexión
+                const infoSpan = document.createElement('span');
+                infoSpan.style.marginLeft = '8px';
+                infoSpan.style.color = '#c9d1d9';
+                
+                // Limpiar y formatear la información
+                let cleanLine = line.replace(/\s+/g, ' ').trim();
+                // Remover información redundante
+                cleanLine = cleanLine.replace(/users:\([^)]+\)/g, '').trim();
+                infoSpan.textContent = cleanLine;
+                entry.appendChild(infoSpan);
+                
+                // Insertar al principio
+                if (netEl.firstChild) {
+                    netEl.insertBefore(entry, netEl.firstChild);
+                } else {
+                    netEl.appendChild(entry);
+                }
+            });
+            
+            // Limitar a 50 entradas
+            while (netEl.children.length > 50) {
+                netEl.removeChild(netEl.lastChild);
             }
             
             // Actualizar nivel de amenaza
-            const isCritical = data.includes('SYN_SENT') || data.includes('ESTABLISHED');
-            threatEl.textContent = isCritical ? 'CRÍTICA' : 'BAJA';
-            threatEl.className = 'stats ' + (isCritical ? 'danger' : 'warning');
+            threatEl.textContent = threatLevel;
+            if (hasThreat) {
+                threatEl.className = 'stats danger';
+            } else if (threatLevel === 'MEDIA') {
+                threatEl.className = 'stats warning';
+            } else {
+                threatEl.className = 'stats warning';
+            }
         }
         
         function updateFiles(data) {
@@ -385,14 +695,46 @@
                 fileEl.innerHTML = '';
             }
             
-            const timestamp = new Date(data.ts).toLocaleTimeString();
-            const entry = `[${timestamp}] ${data.detail}\n`;
-            fileEl.textContent = entry + fileEl.textContent;
+            const entry = document.createElement('div');
+            entry.className = 'file-entry';
             
-            // Limitar a 100 líneas
-            const lines = fileEl.textContent.split('\n');
-            if (lines.length > 100) {
-                fileEl.textContent = lines.slice(0, 100).join('\n');
+            // Determinar nivel de riesgo
+            const risk = data.risk || 'low';
+            entry.classList.add(risk);
+            
+            const timestamp = new Date(data.ts).toLocaleTimeString();
+            const timestampSpan = document.createElement('span');
+            timestampSpan.className = 'file-timestamp';
+            timestampSpan.textContent = `[${timestamp}]`;
+            entry.appendChild(timestampSpan);
+            
+            // Información del archivo
+            const filePath = data.filePath || data.detail.split(' ')[0] || data.detail;
+            const events = data.events || (data.detail.includes('MODIFY') ? 'MODIFY' : 
+                          data.detail.includes('CREATE') ? 'CREATE' : 
+                          data.detail.includes('DELETE') ? 'DELETE' : 'MODIFY');
+            
+            const pathSpan = document.createElement('span');
+            pathSpan.className = 'file-path';
+            pathSpan.textContent = filePath;
+            entry.appendChild(pathSpan);
+            
+            // Badge de evento
+            const eventSpan = document.createElement('span');
+            eventSpan.className = `file-event ${events.toLowerCase()}`;
+            eventSpan.textContent = events;
+            entry.appendChild(eventSpan);
+            
+            // Insertar al principio
+            if (fileEl.firstChild) {
+                fileEl.insertBefore(entry, fileEl.firstChild);
+            } else {
+                fileEl.appendChild(entry);
+            }
+            
+            // Limitar a 50 entradas
+            while (fileEl.children.length > 50) {
+                fileEl.removeChild(fileEl.lastChild);
             }
         }
         
@@ -428,6 +770,97 @@
         document.addEventListener('DOMContentLoaded', () => {
             initSocket();
         });
+        
+        function updateProcesses(processes) {
+            const processEl = document.getElementById('process');
+            
+            // Limpiar empty state si existe
+            if (processEl.querySelector('.empty-state')) {
+                processEl.innerHTML = '';
+            }
+            
+            // Limpiar entradas antiguas
+            processEl.innerHTML = '';
+            
+            processes.forEach(proc => {
+                const entry = document.createElement('div');
+                entry.className = 'process-entry';
+                
+                // Determinar nivel de riesgo
+                if (proc.cpu > 50 || proc.reason.includes('Comando sospechoso')) {
+                    entry.classList.add('critical');
+                } else {
+                    entry.classList.add('high');
+                }
+                
+                const pidSpan = document.createElement('div');
+                pidSpan.className = 'process-pid';
+                pidSpan.textContent = `PID: ${proc.pid}`;
+                entry.appendChild(pidSpan);
+                
+                const metricsSpan = document.createElement('div');
+                metricsSpan.className = 'process-metrics';
+                metricsSpan.textContent = `CPU: ${proc.cpu}% | MEM: ${proc.mem}% | Tiempo: ${proc.time}`;
+                entry.appendChild(metricsSpan);
+                
+                const commandSpan = document.createElement('div');
+                commandSpan.className = 'process-command';
+                commandSpan.textContent = proc.command;
+                entry.appendChild(commandSpan);
+                
+                const reasonSpan = document.createElement('div');
+                reasonSpan.className = 'process-reason';
+                reasonSpan.textContent = `⚠️ ${proc.reason}`;
+                entry.appendChild(reasonSpan);
+                
+                processEl.appendChild(entry);
+            });
+            
+            // Actualizar nivel de amenaza si hay procesos sospechosos
+            if (processes.length > 0) {
+                const threatEl = document.getElementById('threat');
+                threatEl.textContent = 'CRÍTICA';
+                threatEl.className = 'stats danger';
+                showAlert(`🚨 Se detectaron ${processes.length} proceso(s) PHP sospechoso(s)`, 'error');
+            }
+        }
+        
+        function updateCrontab(crontabs) {
+            const crontabEl = document.getElementById('crontab');
+            
+            // Limpiar empty state si existe
+            if (crontabEl.querySelector('.empty-state')) {
+                crontabEl.innerHTML = '';
+            }
+            
+            // Limpiar entradas antiguas
+            crontabEl.innerHTML = '';
+            
+            crontabs.forEach(cron => {
+                const entry = document.createElement('div');
+                entry.className = 'crontab-entry';
+                
+                const userSpan = document.createElement('div');
+                userSpan.className = 'crontab-user';
+                userSpan.textContent = `Usuario: ${cron.user}`;
+                entry.appendChild(userSpan);
+                
+                const commandSpan = document.createElement('div');
+                commandSpan.className = 'crontab-command';
+                commandSpan.textContent = cron.cron;
+                entry.appendChild(commandSpan);
+                
+                crontabEl.appendChild(entry);
+            });
+            
+            // Actualizar nivel de amenaza si hay crontabs sospechosos
+            if (crontabs.length > 0) {
+                const threatEl = document.getElementById('threat');
+                threatEl.textContent = 'CRÍTICA';
+                threatEl.className = 'stats danger';
+                showAlert(`🚨 Se detectaron ${crontabs.length} tarea(s) sospechosa(s) en crontab`, 'error');
+            }
+        }
         
         // Manejar cierre de página
         window.addEventListener('beforeunload', () => {

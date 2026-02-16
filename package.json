@@ -5,10 +5,10 @@
   "main": "dashboard/server.js",
   "scripts": {
     "start": "node dashboard/server.js",
-    "start:80": "set DASHBOARD_PORT=80 && node dashboard/server.js",
+    "start:3813": "set DASHBOARD_PORT=3813 && node dashboard/server.js",
     "start:fallback": "set DASHBOARD_PORT=8080 && node dashboard/server.js",
     "agent": "node agent/agent.js",
-    "agent:80": "set DASHBOARD_PORT=80 && node agent/agent.js",
+    "agent:3813": "set DASHBOARD_PORT=3813 && node agent/agent.js",
     "dev": "node dashboard/server.js",
     "install-deps": "npm install"
   },
