@@ -4,6 +4,7 @@ const https = require('https');
 const io = require('socket.io-client');
 const os = require('os');
 const fs = require('fs');
+const path = require('path');
 const config = require('../config');
 
 // Detectar sistema operativo
@@ -461,6 +462,11 @@ function startFileWatcherAlternative(watchPath) {
                         
                         const riskLevel = assessFileRisk(filePath, 'MODIFY');
                         
+                        // CAPTURA RÁPIDA: Si es un archivo sospechoso en carpeta temp, capturarlo inmediatamente
+                        if (shouldQuickCapture(filePath, 'MODIFY')) {
+                            quickCaptureFile(filePath);
+                        }
+                        
                         // Detectar qué proceso está modificando el archivo
                         exec(`lsof "${filePath}" 2>/dev/null | head -1`, { timeout: 2000 }, (err, stdout) => {
                             let processInfo = null;
@@ -494,6 +500,102 @@ function startFileWatcherAlternative(watchPath) {
     
     fileWatcher = { kill: () => clearInterval(fileCheckInterval) };
     console.log('✅ Monitor de archivos activo (método alternativo)');
+}
+
+// Verificar si un archivo debe ser capturado rápidamente
+function shouldQuickCapture(filePath, events) {
+    if (!filePath || !events) return false;
+    
+    const pathLower = filePath.toLowerCase();
+    const eventsLower = events.toLowerCase();
+    
+    // Solo capturar archivos creados o modificados (no eliminados)
+    if (eventsLower.includes('delete')) return false;
+    
+    // Verificar si está en una carpeta de monitoreo
+    const watchFolders = config.quickCapture?.watchFolders || [];
+    const isInWatchedFolder = watchFolders.some(folder => {
+        if (folder.includes('**')) {
+            // Patrón glob
+            const pattern = folder.replace(/\*\*/g, '.*');
+            return new RegExp(pattern).test(pathLower);
+        }
+        return pathLower.includes(folder.toLowerCase());
+    });
+    
+    if (!isInWatchedFolder) return false;
+    
+    // Verificar extensión sospechosa
+    const ext = path.extname(filePath).toLowerCase();
+    const suspiciousExtensions = config.quickCapture?.suspiciousExtensions || ['.php', '.phtml', '.sh', '.exe'];
+    if (!suspiciousExtensions.includes(ext)) return false;
+    
+    // Verificar nombre sospechoso
+    const fileName = path.basename(filePath).toLowerCase();
+    const suspiciousPatterns = config.quickCapture?.suspiciousPatterns || [];
+    const hasSuspiciousName = suspiciousPatterns.some(pattern => {
+        if (pattern instanceof RegExp) {
+            return pattern.test(fileName) || pattern.test(pathLower);
+        }
+        return fileName.includes(pattern.toLowerCase()) || pathLower.includes(pattern.toLowerCase());
+    });
+    
+    // También capturar si está en /tmp o /var/tmp con extensión sospechosa
+    const isInTemp = pathLower.includes('/tmp/') || pathLower.includes('/var/tmp/') || pathLower.includes('/dev/shm/');
+    
+    return hasSuspiciousName || (isInTemp && suspiciousExtensions.includes(ext));
+}
+
+// Capturar archivo sospechoso rápidamente
+function quickCaptureFile(filePath) {
+    try {
+        // Verificar que el archivo existe
+        if (!fs.existsSync(filePath)) {
+            return; // Ya fue eliminado, muy rápido
+        }
+        
+        // Verificar tamaño máximo
+        const stats = fs.statSync(filePath);
+        const maxSize = config.quickCapture?.maxFileSize || (5 * 1024 * 1024);
+        if (stats.size > maxSize) {
+            console.log(`⚠️ Archivo demasiado grande para captura rápida: ${filePath} (${stats.size} bytes)`);
+            return;
+        }
+        
+        // Crear carpeta de captura si no existe
+        const capturePath = config.quickCapture?.capturePath || '/var/sentinel/captured';
+        if (!fs.existsSync(capturePath)) {
+            fs.mkdirSync(capturePath, { recursive: true });
+        }
+        
+        // Generar nombre único para el archivo capturado
+        const fileName = path.basename(filePath);
+        const timestamp = Date.now();
+        const hash = Math.random().toString(36).substring(2, 9);
+        const capturedFileName = `${timestamp}_${hash}_${fileName}`;
+        const capturedPath = path.join(capturePath, capturedFileName);
+        
+        // Copiar archivo rápidamente
+        fs.copyFileSync(filePath, capturedPath);
+        
+        // Cambiar permisos para que no sea ejecutable
+        fs.chmodSync(capturedPath, 0o644);
+        
+        // Emitir evento al dashboard
+        socket.emit('file_captured', {
+            original: filePath,
+            captured: capturedPath,
+            fileName: capturedFileName,
+            size: stats.size,
+            timestamp: timestamp,
+            reason: 'suspicious_file_in_temp'
+        });
+        
+        console.log(`🚨 ARCHIVO SOSPECHOSO CAPTURADO: ${filePath} -> ${capturedPath}`);
+    } catch (error) {
+        console.error(`❌ Error al capturar archivo ${filePath}:`, error.message);
+        // No emitir error al dashboard para no saturar, solo log
+    }
 }
 
 // Verificar si un archivo debe ser ignorado

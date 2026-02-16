@@ -706,6 +706,7 @@
         <button class="tab" onclick="switchTab('security')">🔒 Seguridad</button>
         <button class="tab" onclick="switchTab('ai')">🤖 Análisis de IA</button>
         <button class="tab" onclick="switchTab('soc')">🛡️ Automatización SOC</button>
+        <button class="tab" onclick="switchTab('captured')">🚨 Archivos Capturados</button>
     </div>
     
     <!-- Pestaña: Monitoreo -->
@@ -833,6 +834,19 @@
                 </button>
             </div>
         </div>
+        
+        <!-- Apartado de Acciones Recomendadas -->
+        <div style="background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 20px; margin-top: 20px;">
+            <h3 style="margin-bottom: 15px; color: #58a6ff;">⚡ Acciones Recomendadas por la IA</h3>
+            <p style="color: #8b949e; margin-bottom: 15px; font-size: 0.9rem;">
+                Comandos de mitigación extraídos del último análisis. Haz clic en "Ejecutar" para ejecutarlos automáticamente.
+            </p>
+            <div id="mitigationCommands" style="max-height: 500px; overflow-y: auto;">
+                <div class="empty-state" style="text-align: center; padding: 40px; color: #8b949e;">
+                    No hay comandos de mitigación disponibles. Genera un análisis completo para ver las recomendaciones.
+                </div>
+            </div>
+        </div>
     </div>
     
     <!-- Pestaña: Automatización SOC -->
@@ -874,6 +888,56 @@
                 <div id="socQuarantineList" style="max-height: 600px; overflow-y: auto;">
                     <div class="empty-state" style="text-align: center; padding: 40px; color: #8b949e;">
                         No hay archivos en cuarentena...
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Pestaña: Archivos Capturados -->
+    <div id="tab-captured" class="tab-content">
+        <div style="background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 20px; margin-bottom: 20px;">
+            <h3 style="margin-bottom: 15px; color: #58a6ff;">🚨 Archivos Sospechosos Capturados</h3>
+            <p style="color: #8b949e; margin-bottom: 15px;">
+                Archivos capturados automáticamente de carpetas temporales (WordPress, /tmp, etc.) con nombres o ubicaciones sospechosas.
+                Estos archivos suelen eliminarse muy rápidamente, por lo que se capturan de forma inmediata.
+            </p>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-top: 20px;">
+                <div style="background: #0d1117; padding: 15px; border-radius: 6px; border: 1px solid #30363d;">
+                    <div style="color: #8b949e; font-size: 0.9rem;">Total Capturados</div>
+                    <div id="capturedTotal" style="font-size: 2rem; color: #58a6ff; font-weight: bold;">0</div>
+                </div>
+                <div style="background: #0d1117; padding: 15px; border-radius: 6px; border: 1px solid #30363d;">
+                    <div style="color: #8b949e; font-size: 0.9rem;">Sin Analizar</div>
+                    <div id="capturedPending" style="font-size: 2rem; color: #ffa657; font-weight: bold;">0</div>
+                </div>
+                <div style="background: #0d1117; padding: 15px; border-radius: 6px; border: 1px solid #30363d;">
+                    <div style="color: #8b949e; font-size: 0.9rem;">Analizados</div>
+                    <div id="capturedAnalyzed" style="font-size: 2rem; color: #3fb950; font-weight: bold;">0</div>
+                </div>
+            </div>
+        </div>
+        
+        <div style="background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 20px;">
+            <h3 style="margin-bottom: 15px; color: #58a6ff;">📋 Lista de Archivos Capturados</h3>
+            <div id="capturedFilesList" style="max-height: 600px; overflow-y: auto;">
+                <div class="empty-state" style="text-align: center; padding: 40px; color: #8b949e;">
+                    No hay archivos capturados aún...
+                </div>
+            </div>
+        </div>
+        
+        <!-- Modal para análisis -->
+        <div id="capturedAnalysisModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 1000; align-items: center; justify-content: center;">
+            <div style="background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 30px; max-width: 800px; max-height: 90vh; overflow-y: auto; width: 90%;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                    <h3 style="color: #58a6ff;">🤖 Análisis de Archivo</h3>
+                    <button onclick="closeCapturedAnalysisModal()" style="background: #da3633; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer;">Cerrar</button>
+                </div>
+                <div id="capturedAnalysisContent" style="color: #c9d1d9; line-height: 1.6;">
+                    <div style="text-align: center; padding: 40px; color: #8b949e;">
+                        <div class="spinner"></div>
+                        <p style="margin-top: 20px;">Analizando archivo con IA...</p>
                     </div>
                 </div>
             </div>
@@ -2250,11 +2314,15 @@ Luego verifica sus conexiones: <code>lsof -p 12345</code>
 Si es malicioso, deténlo con: <code>kill -9 12345</code>"
 
 <strong>3. INSTRUCCIONES DE MITIGACIÓN (Orden de Prioridad):</strong>
-Lista las acciones en orden de prioridad, cada una con su comando en <code>:
+Lista las acciones en orden de prioridad. Para cada comando de mitigación, usa el formato:
+MITIGATE: [Descripción de la acción] | [comando a ejecutar]
 
-1. [Acción crítica] - Ejecuta: <code>comando1</code>
-2. [Acción importante] - Ejecuta: <code>comando2</code>
-3. [Acción preventiva] - Ejecuta: <code>comando3</code>
+Ejemplo:
+MITIGATE: Detener proceso malicioso PID 12345 | kill -9 12345
+MITIGATE: Eliminar archivo backdoor | rm -f /var/www/vhosts/site.com/httpdocs/shell.php
+MITIGATE: Bloquear conexión IP sospechosa | iptables -A INPUT -s 192.168.1.100 -j DROP
+
+IMPORTANTE: Cada línea de mitigación debe empezar con "MITIGATE:" seguido de la descripción, luego "|" y finalmente el comando.
 
 <strong>4. VERIFICACIÓN POST-MITIGACIÓN:</strong>
 Comandos para verificar que la amenaza fue eliminada, todos en <code>
@@ -2328,6 +2396,9 @@ Responde en español, de forma clara, estructurada y con TODOS los comandos en e
                     addAIMessage('assistant', data.respuesta);
                     aiConversationHistory.push({ role: 'user', content: prompt });
                     aiConversationHistory.push({ role: 'assistant', content: data.respuesta });
+                    
+                    // Extraer comandos de mitigación y actualizar el apartado
+                    extractMitigationCommands(data.respuesta);
                 } else {
                     addAIMessage('assistant', '❌ Error al obtener respuesta de la IA: ' + (data.error || 'Error desconocido'));
                 }
@@ -2398,6 +2469,9 @@ ${JSON.stringify(currentSystemData, null, 2)}`;
                     addAIMessage('assistant', data.respuesta);
                     aiConversationHistory.push({ role: 'user', content: message });
                     aiConversationHistory.push({ role: 'assistant', content: data.respuesta });
+                    
+                    // Extraer comandos de mitigación si los hay
+                    extractMitigationCommands(data.respuesta);
                 } else {
                     addAIMessage('assistant', '❌ Error al obtener respuesta de la IA: ' + (data.error || 'Error desconocido'));
                 }
@@ -2598,6 +2672,161 @@ ${JSON.stringify(currentSystemData, null, 2)}`;
                 socket.disconnect();
             }
         });
+        // Gestión de archivos capturados
+        let capturedFilesList = [];
+        
+        // Cargar archivos capturados al iniciar
+        function loadCapturedFiles() {
+            fetch('/api/captured')
+                .then(res => res.json())
+                .then(data => {
+                    if (data.success) {
+                        capturedFilesList = data.files || [];
+                        updateCapturedFilesUI();
+                    }
+                })
+                .catch(err => console.error('Error al cargar archivos capturados:', err));
+        }
+        
+        // Actualizar UI de archivos capturados
+        function updateCapturedFilesUI() {
+            const total = capturedFilesList.length;
+            const analyzed = capturedFilesList.filter(f => f.analyzed).length;
+            const pending = total - analyzed;
+            
+            document.getElementById('capturedTotal').textContent = total;
+            document.getElementById('capturedAnalyzed').textContent = analyzed;
+            document.getElementById('capturedPending').textContent = pending;
+            
+            const listContainer = document.getElementById('capturedFilesList');
+            if (total === 0) {
+                listContainer.innerHTML = '<div class="empty-state" style="text-align: center; padding: 40px; color: #8b949e;">No hay archivos capturados aún...</div>';
+                return;
+            }
+            
+            listContainer.innerHTML = capturedFilesList.map(file => {
+                const date = new Date(file.timestamp);
+                const sizeKB = (file.size / 1024).toFixed(2);
+                const analyzedBadge = file.analyzed ? 
+                    '<span style="background: #3fb950; color: white; padding: 2px 8px; border-radius: 4px; font-size: 0.8rem;">✓ Analizado</span>' :
+                    '<span style="background: #ffa657; color: white; padding: 2px 8px; border-radius: 4px; font-size: 0.8rem;">Pendiente</span>';
+                
+                return `
+                    <div style="background: #0d1117; border: 1px solid #30363d; border-radius: 6px; padding: 15px; margin-bottom: 10px;">
+                        <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 10px;">
+                            <div style="flex: 1;">
+                                <div style="color: #58a6ff; font-weight: bold; margin-bottom: 5px;">${file.fileName}</div>
+                                <div style="color: #8b949e; font-size: 0.85rem; margin-bottom: 5px;">📁 ${file.original}</div>
+                                <div style="color: #8b949e; font-size: 0.85rem;">
+                                    📅 ${date.toLocaleString('es-ES')} • 📦 ${sizeKB} KB • ${analyzedBadge}
+                                </div>
+                            </div>
+                        </div>
+                        <div style="display: flex; gap: 10px; margin-top: 10px;">
+                            <button onclick="downloadCapturedFile('${file.id}')" style="background: #238636; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 0.9rem;">⬇️ Descargar</button>
+                            <button onclick="analyzeCapturedFile('${file.id}')" style="background: #58a6ff; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 0.9rem;">🤖 Analizar con IA</button>
+                            ${file.analyzed ? `<button onclick="viewCapturedAnalysis('${file.id}')" style="background: #3fb950; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 0.9rem;">📄 Ver Análisis</button>` : ''}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+        
+        // Descargar archivo capturado
+        function downloadCapturedFile(fileId) {
+            window.open(`/api/captured/${fileId}/download`, '_blank');
+        }
+        
+        // Analizar archivo capturado con IA
+        function analyzeCapturedFile(fileId) {
+            const modal = document.getElementById('capturedAnalysisModal');
+            const content = document.getElementById('capturedAnalysisContent');
+            
+            modal.style.display = 'flex';
+            content.innerHTML = '<div style="text-align: center; padding: 40px; color: #8b949e;"><div class="spinner"></div><p style="margin-top: 20px;">Analizando archivo con IA...</p></div>';
+            
+            fetch(`/api/captured/${fileId}/analyze`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    // Actualizar archivo en la lista
+                    const fileIndex = capturedFilesList.findIndex(f => f.id === fileId);
+                    if (fileIndex !== -1) {
+                        capturedFilesList[fileIndex] = data.file;
+                        updateCapturedFilesUI();
+                    }
+                    
+                    // Mostrar análisis
+                    content.innerHTML = formatAIMessage(data.analysis);
+                } else {
+                    content.innerHTML = `<div style="color: #da3633; padding: 20px;">❌ Error: ${data.error || 'Error desconocido'}</div>`;
+                }
+            })
+            .catch(err => {
+                console.error('Error al analizar archivo:', err);
+                content.innerHTML = `<div style="color: #da3633; padding: 20px;">❌ Error al analizar archivo: ${err.message}</div>`;
+            });
+        }
+        
+        // Ver análisis existente
+        function viewCapturedAnalysis(fileId) {
+            const file = capturedFilesList.find(f => f.id === fileId);
+            if (!file || !file.analysis) return;
+            
+            const modal = document.getElementById('capturedAnalysisModal');
+            const content = document.getElementById('capturedAnalysisContent');
+            
+            modal.style.display = 'flex';
+            content.innerHTML = formatAIMessage(file.analysis);
+        }
+        
+        // Cerrar modal de análisis
+        function closeCapturedAnalysisModal() {
+            document.getElementById('capturedAnalysisModal').style.display = 'none';
+        }
+        
+        // Escuchar eventos de archivos capturados en tiempo real
+        socket.on('file_captured', (data) => {
+            console.log('🚨 Archivo capturado:', data);
+            // Agregar al inicio de la lista
+            capturedFilesList.unshift({
+                id: data.id || `CAP-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
+                original: data.original,
+                captured: data.captured,
+                fileName: data.fileName,
+                size: data.size,
+                timestamp: data.timestamp,
+                reason: data.reason,
+                analyzed: false
+            });
+            
+            // Mantener solo los últimos 500
+            if (capturedFilesList.length > 500) {
+                capturedFilesList.splice(500);
+            }
+            
+            updateCapturedFilesUI();
+            
+            // Mostrar notificación
+            showToast(`🚨 Archivo sospechoso capturado: ${data.fileName}`, 'warning');
+        });
+        
+        // Cargar archivos al cambiar a la pestaña
+        const originalSwitchTab = window.switchTab;
+        window.switchTab = function(tabName) {
+            originalSwitchTab(tabName);
+            if (tabName === 'captured') {
+                loadCapturedFiles();
+            }
+        };
+        
+        // Cargar al iniciar si estamos en la pestaña correcta
+        if (document.getElementById('tab-captured')?.classList.contains('active')) {
+            loadCapturedFiles();
+        }
     </script>
 </body>
 </html>

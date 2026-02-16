@@ -201,6 +201,20 @@ function initSOCDirectories() {
 
 initSOCDirectories();
 
+// Crear carpeta de archivos capturados
+function initCaptureDirectory() {
+    const capturePath = config.quickCapture?.capturePath || '/var/sentinel/captured';
+    if (!fs.existsSync(capturePath)) {
+        fs.mkdirSync(capturePath, { recursive: true });
+        console.log(`📁 Creada carpeta de captura: ${capturePath}`);
+    }
+}
+
+initCaptureDirectory();
+
+// Almacenamiento de archivos capturados
+const capturedFiles = [];
+
 // Función para serializar JSON de forma segura sin desbordar memoria
 function safeJSONStringify(obj, space = 0) {
     try {
@@ -650,23 +664,30 @@ async function executeInvestigationCommands(investigation, commands) {
     for (let i = 0; i < commands.length; i++) {
         const command = commands[i];
         
-        addLog('command', `🔧 Ejecutando comando ${i + 1}/${commands.length}`, {
-            command: command,
-            index: i + 1,
-            total: commands.length
-        });
+        // Limpiar comando antes de ejecutar (eliminar caracteres especiales y formato)
+        let cleanCommand = command.trim();
+        // Eliminar prefijos como $, #, CMD:, etc.
+        cleanCommand = cleanCommand.replace(/^[\$#]\s*/, '').replace(/^CMD:\s*/i, '').trim();
+        // Eliminar comentarios entre paréntesis al final
+        cleanCommand = cleanCommand.replace(/\s*\([^)]*\)\s*$/, '').trim();
+        // Eliminar múltiples espacios
+        cleanCommand = cleanCommand.replace(/\s+/g, ' ');
         
-        // Actualizar estado: comando actual
-        investigation.currentCommand = command;
-        investigation.currentCommandIndex = i + 1;
-        investigation.currentCommandStatus = 'ejecutando';
-        investigation.currentCommandOutput = '';
-        
-        io.emit('soc_investigation_update', investigation);
+        // Validar que el comando no esté vacío
+        if (!cleanCommand || cleanCommand.length < 2) {
+            addLog('error', `❌ Comando inválido o vacío: "${command}"`, {
+                original: command,
+                cleaned: cleanCommand
+            });
+            investigation.currentCommandStatus = 'error';
+            investigation.currentCommandOutput = `Comando inválido: "${command}"`;
+            io.emit('soc_investigation_update', investigation);
+            continue;
+        }
         
         // Ejecutar comando con salida en tiempo real
         await new Promise((resolve) => {
-            const childProcess = exec(command, { 
+            const childProcess = exec(cleanCommand, { 
                 timeout: 30000, 
                 maxBuffer: 10 * 1024 * 1024 // 10MB
             });
@@ -1144,6 +1165,183 @@ app.get('/api/soc/quarantine/:filename', requireAuth, (req, res) => {
 });
 
 // Endpoint para listar archivos en cuarentena
+// Endpoints para archivos capturados
+app.get('/api/captured', requireAuth, (req, res) => {
+    try {
+        res.json({
+            success: true,
+            files: capturedFiles,
+            total: capturedFiles.length
+        });
+    } catch (error) {
+        console.error('Error al listar archivos capturados:', error);
+        res.status(500).json({ error: 'Error al listar archivos capturados' });
+    }
+});
+
+app.get('/api/captured/:id/download', requireAuth, (req, res) => {
+    try {
+        const fileId = req.params.id;
+        const file = capturedFiles.find(f => f.id === fileId || f.fileName === fileId);
+        
+        if (!file) {
+            return res.status(404).json({ error: 'Archivo no encontrado' });
+        }
+        
+        if (!fs.existsSync(file.captured)) {
+            return res.status(404).json({ error: 'Archivo físico no encontrado' });
+        }
+        
+        res.download(file.captured, file.fileName, (err) => {
+            if (err) {
+                console.error('Error al descargar archivo:', err);
+                res.status(500).json({ error: 'Error al descargar archivo' });
+            }
+        });
+    } catch (error) {
+        console.error('Error al descargar archivo:', error);
+        res.status(500).json({ error: 'Error al descargar archivo' });
+    }
+});
+
+app.post('/api/captured/:id/analyze', requireAuth, async (req, res) => {
+    try {
+        const fileId = req.params.id;
+        const file = capturedFiles.find(f => f.id === fileId || f.fileName === fileId);
+        
+        if (!file) {
+            return res.status(404).json({ error: 'Archivo no encontrado' });
+        }
+        
+        if (!fs.existsSync(file.captured)) {
+            return res.status(404).json({ error: 'Archivo físico no encontrado' });
+        }
+        
+        // Leer contenido del archivo (limitado a 100KB para análisis)
+        const stats = fs.statSync(file.captured);
+        const maxSize = 100 * 1024; // 100KB
+        let fileContent = '';
+        
+        if (stats.size > maxSize) {
+            // Leer solo los primeros 100KB
+            const buffer = Buffer.alloc(maxSize);
+            const fd = fs.openSync(file.captured, 'r');
+            fs.readSync(fd, buffer, 0, maxSize, 0);
+            fs.closeSync(fd);
+            fileContent = buffer.toString('utf8', 0, maxSize) + '\n...[Archivo truncado, tamaño total: ' + stats.size + ' bytes]';
+        } else {
+            fileContent = fs.readFileSync(file.captured, 'utf8');
+        }
+        
+        // Preparar prompt para IA
+        const analysisPrompt = `Eres un analista de seguridad experto. Analiza este archivo sospechoso capturado automáticamente.
+
+INFORMACIÓN DEL ARCHIVO:
+- Ruta original: ${file.original}
+- Nombre: ${file.fileName}
+- Tamaño: ${stats.size} bytes
+- Razón de captura: ${file.reason}
+- Timestamp: ${new Date(file.timestamp).toISOString()}
+
+CONTENIDO DEL ARCHIVO:
+\`\`\`
+${fileContent}
+\`\`\`
+
+INSTRUCCIONES:
+1. Analiza el contenido del archivo en busca de código malicioso
+2. Identifica firmas de malware, backdoors, shells, etc.
+3. Proporciona un análisis detallado del nivel de amenaza
+4. Da recomendaciones específicas de mitigación
+5. Si es código PHP, analiza funciones sospechosas como eval(), base64_decode(), gzinflate(), etc.
+6. Usa etiquetas <code> para comandos y <strong> para puntos importantes
+
+FORMATO DE MITIGACIÓN:
+Para cada comando de mitigación, usa el formato:
+MITIGATE: [Descripción de la acción] | [comando a ejecutar]
+
+Ejemplo:
+MITIGATE: Eliminar archivo malicioso | rm -f ${file.original}
+MITIGATE: Verificar permisos del directorio | ls -la ${path.dirname(file.original)}
+
+Responde en formato estructurado con:
+- Nivel de amenaza (Bajo/Medio/Alto/Crítico)
+- Tipo de malware detectado (si aplica)
+- Análisis detallado
+- Recomendaciones de mitigación (usando formato MITIGATE: para cada comando)`;
+
+        // Llamar a IA
+        const aiUrl = new URL(config.aiApi.url);
+        const isHttps = aiUrl.protocol === 'https:';
+        const httpModule = isHttps ? https : http;
+        
+        const requestData = JSON.stringify({
+            prompt: analysisPrompt,
+            modelo: config.aiApi.defaultModel
+        });
+        
+        const options = {
+            hostname: aiUrl.hostname,
+            port: aiUrl.port || (isHttps ? 443 : 80),
+            path: aiUrl.pathname,
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Content-Length': Buffer.byteLength(requestData),
+                'x-api-key': config.aiApi.apiKey
+            },
+            timeout: 120000
+        };
+        
+        const aiRequest = httpModule.request(options, (aiResponse) => {
+            let data = '';
+            
+            aiResponse.on('data', (chunk) => {
+                data += chunk;
+            });
+            
+            aiResponse.on('end', () => {
+                try {
+                    const response = JSON.parse(data);
+                    
+                    if (response.success && response.respuesta) {
+                        // Marcar archivo como analizado
+                        file.analyzed = true;
+                        file.analysis = response.respuesta;
+                        file.analysisTimestamp = Date.now();
+                        
+                        res.json({
+                            success: true,
+                            analysis: response.respuesta,
+                            file: file
+                        });
+                    } else {
+                        res.status(500).json({
+                            error: response.error || 'Error al analizar archivo',
+                            response: response
+                        });
+                    }
+                } catch (error) {
+                    console.error('Error procesando respuesta de IA:', error);
+                    res.status(500).json({ error: 'Error al procesar respuesta de IA' });
+                }
+            });
+        });
+        
+        aiRequest.on('error', (error) => {
+            console.error('Error al conectar con IA:', error);
+            res.status(500).json({ error: 'Error al conectar con IA' });
+        });
+        
+        aiRequest.write(requestData);
+        aiRequest.end();
+        
+    } catch (error) {
+        console.error('Error al analizar archivo:', error);
+        res.status(500).json({ error: 'Error al analizar archivo' });
+    }
+});
+
 app.get('/api/soc/quarantine', requireAuth, (req, res) => {
     try {
         const files = fs.readdirSync(config.soc.quarantinePath)
@@ -1336,6 +1534,32 @@ io.on('connection', (socket) => {
         }
     });
     
+    // Handler para archivos capturados rápidamente
+    socket.on('file_captured', (data) => {
+        console.log('🚨 Archivo sospechoso capturado:', data);
+        
+        // Agregar a la lista de archivos capturados
+        const capturedInfo = {
+            id: `CAP-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
+            original: data.original,
+            captured: data.captured,
+            fileName: data.fileName,
+            size: data.size,
+            timestamp: data.timestamp,
+            reason: data.reason,
+            analyzed: false
+        };
+        
+        capturedFiles.unshift(capturedInfo); // Agregar al inicio
+        // Mantener solo los últimos 500 archivos
+        if (capturedFiles.length > 500) {
+            capturedFiles.splice(500);
+        }
+        
+        // Emitir a todos los clientes
+        io.emit('file_captured', capturedInfo);
+    });
+    
     socket.on('panic_action', () => {
         console.warn('🚨 PROTOCOLO DE PÁNICO ACTIVADO');
         io.emit('trigger_panic');
@@ -1348,6 +1572,70 @@ io.on('connection', (socket) => {
     socket.on('error', (error) => {
         console.error('❌ Error en socket:', error);
     });
+});
+
+// Endpoint para ejecutar comandos de mitigación
+app.post('/api/mitigation/execute', requireAuth, async (req, res) => {
+    try {
+        const { command, description } = req.body;
+        
+        if (!command || typeof command !== 'string') {
+            return res.status(400).json({ error: 'Comando es requerido' });
+        }
+        
+        // Limpiar comando
+        let cleanCommand = command.trim();
+        cleanCommand = cleanCommand.replace(/^[\$#]\s*/, '').replace(/^CMD:\s*/i, '').trim();
+        cleanCommand = cleanCommand.replace(/\s*\([^)]*\)\s*$/, '').trim();
+        cleanCommand = cleanCommand.replace(/\s+/g, ' ');
+        
+        if (!cleanCommand || cleanCommand.length < 2) {
+            return res.status(400).json({ error: 'Comando inválido' });
+        }
+        
+        // Validar que no sea un comando peligroso sin contexto
+        const dangerousCommands = ['rm -rf /', 'mkfs', 'dd if=', 'format'];
+        const isDangerous = dangerousCommands.some(dc => cleanCommand.toLowerCase().includes(dc));
+        
+        if (isDangerous) {
+            return res.status(400).json({ 
+                error: 'Comando demasiado peligroso para ejecutar automáticamente',
+                command: cleanCommand
+            });
+        }
+        
+        console.log(`⚡ Ejecutando comando de mitigación: ${cleanCommand} (${description || 'Sin descripción'})`);
+        
+        // Ejecutar comando
+        exec(cleanCommand, { 
+            timeout: 30000, 
+            maxBuffer: 10 * 1024 * 1024 // 10MB
+        }, (error, stdout, stderr) => {
+            if (error) {
+                console.error(`❌ Error al ejecutar comando de mitigación: ${error.message}`);
+                res.json({
+                    success: false,
+                    error: error.message,
+                    output: stderr || stdout || '',
+                    exitCode: error.code || 1,
+                    command: cleanCommand
+                });
+            } else {
+                console.log(`✅ Comando de mitigación ejecutado correctamente`);
+                res.json({
+                    success: true,
+                    output: stdout || '',
+                    error: stderr || null,
+                    exitCode: 0,
+                    command: cleanCommand
+                });
+            }
+        });
+        
+    } catch (error) {
+        console.error('Error en ejecución de comando de mitigación:', error);
+        res.status(500).json({ error: 'Error al ejecutar comando: ' + error.message });
+    }
 });
 
 // Intentar iniciar en puerto 80, con fallback
@@ -1381,6 +1669,70 @@ function startServer() {
         }
     });
 }
+
+// Endpoint para ejecutar comandos de mitigación
+app.post('/api/mitigation/execute', requireAuth, async (req, res) => {
+    try {
+        const { command, description } = req.body;
+        
+        if (!command || typeof command !== 'string') {
+            return res.status(400).json({ error: 'Comando es requerido' });
+        }
+        
+        // Limpiar comando
+        let cleanCommand = command.trim();
+        cleanCommand = cleanCommand.replace(/^[\$#]\s*/, '').replace(/^CMD:\s*/i, '').trim();
+        cleanCommand = cleanCommand.replace(/\s*\([^)]*\)\s*$/, '').trim();
+        cleanCommand = cleanCommand.replace(/\s+/g, ' ');
+        
+        if (!cleanCommand || cleanCommand.length < 2) {
+            return res.status(400).json({ error: 'Comando inválido' });
+        }
+        
+        // Validar que no sea un comando peligroso sin contexto
+        const dangerousCommands = ['rm -rf /', 'mkfs', 'dd if=', 'format'];
+        const isDangerous = dangerousCommands.some(dc => cleanCommand.toLowerCase().includes(dc));
+        
+        if (isDangerous) {
+            return res.status(400).json({ 
+                error: 'Comando demasiado peligroso para ejecutar automáticamente',
+                command: cleanCommand
+            });
+        }
+        
+        console.log(`⚡ Ejecutando comando de mitigación: ${cleanCommand} (${description || 'Sin descripción'})`);
+        
+        // Ejecutar comando
+        exec(cleanCommand, { 
+            timeout: 30000, 
+            maxBuffer: 10 * 1024 * 1024 // 10MB
+        }, (error, stdout, stderr) => {
+            if (error) {
+                console.error(`❌ Error al ejecutar comando de mitigación: ${error.message}`);
+                res.json({
+                    success: false,
+                    error: error.message,
+                    output: stderr || stdout || '',
+                    exitCode: error.code || 1,
+                    command: cleanCommand
+                });
+            } else {
+                console.log(`✅ Comando de mitigación ejecutado correctamente`);
+                res.json({
+                    success: true,
+                    output: stdout || '',
+                    error: stderr || null,
+                    exitCode: 0,
+                    command: cleanCommand
+                });
+            }
+        });
+        
+    } catch (error) {
+        console.error('Error en ejecución de comando de mitigación:', error);
+        res.status(500).json({ error: 'Error al ejecutar comando: ' + error.message });
+    }
+});
 
 // Manejo de errores no capturados
 process.on('uncaughtException', (err) => {

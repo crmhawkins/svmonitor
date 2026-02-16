@@ -90,5 +90,44 @@ module.exports = {
         investigationInterval: 300000, // Verificar cada 5 minutos
         quarantinePath: process.env.QUARANTINE_PATH || '/var/sentinel/quarantine',
         reportsPath: process.env.REPORTS_PATH || '/var/sentinel/reports'
+    },
+    
+    // Configuración de captura rápida de archivos sospechosos
+    quickCapture: {
+        // Carpetas a monitorear para captura rápida
+        watchFolders: [
+            '/tmp',
+            '/var/tmp',
+            '**/wp-content/uploads/**',
+            '**/wp-content/cache/**',
+            '**/wp-content/temp/**',
+            '**/wp-content/upgrade/**',
+            '/dev/shm'
+        ],
+        // Patrones de nombres sospechosos
+        suspiciousPatterns: [
+            /shell/i,
+            /backdoor/i,
+            /c99/i,
+            /cpanel/i,
+            /phpshell/i,
+            /r57/i,
+            /wso/i,
+            /b374k/i,
+            /\.php\.(jpg|png|gif|txt)$/i, // PHP disfrazado
+            /^\.(htaccess|htpasswd|user\.ini)$/i,
+            /^[a-f0-9]{32}\.php$/i, // Hash MD5 como nombre
+            /^[a-f0-9]{40}\.php$/i, // Hash SHA1 como nombre
+            /^[a-f0-9]{64}\.php$/i, // Hash SHA256 como nombre
+            /^[0-9]+\.php$/i, // Solo números
+            /^[a-z]{1,3}\.php$/i, // Nombres muy cortos
+            /eval|base64|gzinflate|str_rot13/i // Contenido sospechoso en nombre
+        ],
+        // Extensions sospechosas en temp
+        suspiciousExtensions: ['.php', '.phtml', '.php3', '.php4', '.php5', '.phps', '.sh', '.pl', '.py', '.exe', '.bin'],
+        // Ruta donde guardar archivos capturados
+        capturePath: process.env.CAPTURE_PATH || '/var/sentinel/captured',
+        // Tamaño máximo de archivo a capturar (en bytes, 5MB)
+        maxFileSize: 5 * 1024 * 1024
     }
 };
