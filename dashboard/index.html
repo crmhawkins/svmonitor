@@ -2215,64 +2215,88 @@ El sistema está limpio o no se han detectado eventos recientes.`);
                     return;
                 }
                 
-                const prompt = `Eres un analista SOC senior especializado en análisis forense y detección de amenazas. Tu trabajo es analizar EXCLUSIVAMENTE los datos reales proporcionados y generar un análisis específico basado en ellos.
+                const prompt = `Eres un analista SOC senior especializado en análisis forense y detección de amenazas. Tu trabajo es analizar los datos proporcionados y dar INSTRUCCIONES DIRECTAS Y ACCIONABLES.
+
+FORMATO DE RESPUESTA OBLIGATORIO:
+- Usa etiquetas <strong> para títulos y secciones importantes
+- TODOS los comandos de Linux DEBEN estar dentro de etiquetas <code>comando</code>
+- Sé DIRECTO y ESPECÍFICO, sin rodeos
+- Proporciona instrucciones paso a paso claras
 
 REGLAS CRÍTICAS:
-1. NO proporciones consejos genéricos de seguridad
-2. NO digas "no hay amenazas" si hay datos en los arrays
-3. Analiza CADA proceso, archivo, conexión y tarea específicamente
-4. Si hay datos, DEBES analizarlos y explicar qué significan
-5. Correlaciona los eventos para identificar patrones de ataque
+1. NO proporciones consejos genéricos - solo análisis específico de los datos
+2. Analiza CADA elemento en los arrays proporcionados
+3. Para CADA comando que menciones, usa <code>comando</code>
+4. Da instrucciones DIRECTAS: "Ejecuta...", "Verifica...", "Elimina..."
+5. Ordena las acciones por prioridad (1, 2, 3...)
 
 DATOS DEL SISTEMA A ANALIZAR:
 ${JSON.stringify(collectedData, null, 2)}
 
-INSTRUCCIONES DE ANÁLISIS:
+ESTRUCTURA DE RESPUESTA REQUERIDA:
 
-1. RECONOCIMIENTO DEL ATAQUE:
-   Analiza CADA elemento en los arrays proporcionados:
-   
-   - PROCESOS SOSPECHOSOS (${collectedData.resumen.total_procesos_sospechosos} encontrados):
-     * Para CADA proceso, identifica: PID, comando ejecutado, razón de sospecha, uso de recursos
-     * Explica QUÉ hace cada comando sospechoso
-     * Identifica si hay procesos relacionados o patrones
-     * Determina el tipo de amenaza (backdoor, miner, bot, etc.)
-   
-   - ARCHIVOS MODIFICADOS (${collectedData.resumen.total_archivos_modificados} encontrados):
-     * Para CADA archivo, analiza: ruta completa, tipo de evento (CREATE/MODIFY/DELETE), nivel de riesgo
-     * Identifica el proceso que modificó cada archivo
-     * Determina si las rutas son sospechosas (/tmp, /var/tmp, wp-content/uploads, etc.)
-     * Explica qué tipo de ataque podría estar relacionado
-   
-   - CONEXIONES DE RED (${collectedData.resumen.total_conexiones_sospechosas} encontradas):
-     * Para CADA conexión, analiza: dirección IP, puerto, protocolo, estado
-     * Identifica conexiones salientes desde PHP/Python/Perl
-     * Determina si son conexiones legítimas o maliciosas
-     * Correlaciona con procesos y archivos
-   
-   - TAREAS CRONTAB (${collectedData.resumen.total_tareas_crontab} encontradas):
-     * Para CADA tarea, analiza: usuario, comando programado, frecuencia
-     * Identifica tareas sospechosas o no autorizadas
-     * Explica qué hace cada tarea y por qué es sospechosa
+<strong>1. ANÁLISIS INMEDIATO:</strong>
+Para CADA elemento sospechoso encontrado, proporciona:
+- Tipo de amenaza identificada
+- Nivel de criticidad (CRÍTICO, ALTO, MEDIO)
+- Qué está haciendo exactamente
 
-2. CORRELACIÓN Y PATRONES:
-   - Relaciona procesos con archivos modificados
-   - Relaciona procesos con conexiones de red
-   - Identifica cadenas de ataque (ej: proceso → modifica archivo → establece conexión)
-   - Determina el vector de ataque inicial
+<strong>2. INSTRUCCIONES DE INVESTIGACIÓN (Paso a Paso):</strong>
+Para cada amenaza, proporciona comandos específicos usando <code>:
 
-3. MITIGACIÓN ESPECÍFICA:
-   Basándote en los datos analizados, proporciona:
-   - Comandos EXACTOS de Linux para investigar cada proceso sospechoso
-   - Comandos para analizar cada archivo modificado
-   - Comandos para bloquear conexiones maliciosas
-   - Comandos para eliminar tareas crontab maliciosas
-   - Orden de prioridad (qué hacer primero)
-   - Explicación de QUÉ hace cada comando antes de ejecutarlo
+Ejemplo de formato:
+"Para investigar el proceso PID 12345, ejecuta: <code>ps aux | grep 12345</code>
+Luego verifica sus conexiones: <code>lsof -p 12345</code>
+Si es malicioso, deténlo con: <code>kill -9 12345</code>"
 
-IMPORTANTE: Si hay datos en los arrays, DEBES analizarlos. No digas "no hay amenazas" si hay procesos, archivos o conexiones listadas. Analiza cada uno específicamente.
+<strong>3. INSTRUCCIONES DE MITIGACIÓN (Orden de Prioridad):</strong>
+Lista las acciones en orden de prioridad, cada una con su comando en <code>:
 
-Responde en español, de forma estructurada y DETALLADA.`;
+1. [Acción crítica] - Ejecuta: <code>comando1</code>
+2. [Acción importante] - Ejecuta: <code>comando2</code>
+3. [Acción preventiva] - Ejecuta: <code>comando3</code>
+
+<strong>4. VERIFICACIÓN POST-MITIGACIÓN:</strong>
+Comandos para verificar que la amenaza fue eliminada, todos en <code>
+
+ANÁLISIS DETALLADO REQUERIDO:
+
+PROCESOS SOSPECHOSOS (${collectedData.resumen.total_procesos_sospechosos}):
+${collectedData.procesos_sospechosos.length > 0 ? 
+  collectedData.procesos_sospechosos.map(p => 
+    `- PID ${p.pid}: ${p.comando} (Razón: ${p.razon_sospechosa}, CPU: ${p.cpu}%, Mem: ${p.memoria}%)`
+  ).join('\n') : 
+  'Ninguno detectado'}
+
+ARCHIVOS MODIFICADOS (${collectedData.resumen.total_archivos_modificados}):
+${collectedData.archivos_modificados.length > 0 ? 
+  collectedData.archivos_modificados.slice(0, 10).map(f => 
+    `- ${f.ruta} (Evento: ${f.evento}, Riesgo: ${f.riesgo})`
+  ).join('\n') : 
+  'Ninguno detectado'}
+
+CONEXIONES DE RED (${collectedData.resumen.total_conexiones_sospechosas}):
+${collectedData.conexiones_red.length > 0 ? 
+  collectedData.conexiones_red.slice(0, 10).map(c => 
+    `- ${c.conexion} (Riesgo: ${c.riesgo})`
+  ).join('\n') : 
+  'Ninguna detectada'}
+
+TAREAS CRONTAB (${collectedData.resumen.total_tareas_crontab}):
+${collectedData.tareas_crontab.length > 0 ? 
+  collectedData.tareas_crontab.map(c => 
+    `- Usuario ${c.usuario}: ${c.tarea}`
+  ).join('\n') : 
+  'Ninguna detectada'}
+
+IMPORTANTE:
+- TODOS los comandos deben estar en etiquetas <code>
+- Sé ESPECÍFICO con cada proceso, archivo y conexión
+- Da instrucciones DIRECTAS, no sugerencias
+- Ordena por prioridad (lo más crítico primero)
+- Explica brevemente QUÉ hace cada comando antes de proporcionarlo
+
+Responde en español, de forma clara, estructurada y con TODOS los comandos en etiquetas <code>.`;
                 
                 const response = await fetch('/api/ai/analyze', {
                     method: 'POST',
@@ -2338,9 +2362,20 @@ Responde en español, de forma estructurada y DETALLADA.`;
                 }
                 
                 // Si la pregunta es sobre el sistema, agregar datos actuales
-                if (message.toLowerCase().includes('sistema') || message.toLowerCase().includes('amenaza') || message.toLowerCase().includes('ataque') || message.toLowerCase().includes('proceso') || message.toLowerCase().includes('archivo') || message.toLowerCase().includes('red')) {
+                if (message.toLowerCase().includes('sistema') || message.toLowerCase().includes('amenaza') || message.toLowerCase().includes('ataque') || message.toLowerCase().includes('proceso') || message.toLowerCase().includes('archivo') || message.toLowerCase().includes('red') || message.toLowerCase().includes('comando') || message.toLowerCase().includes('ejecutar')) {
                     const currentSystemData = collectSystemData();
-                    contextPrompt += `\n\nIMPORTANTE: Analiza SOLO estos datos reales del sistema. No des consejos genéricos.\n\nDatos actuales del sistema:\n${JSON.stringify(currentSystemData, null, 2)}`;
+                    contextPrompt += `\n\nIMPORTANTE: 
+- Analiza SOLO estos datos reales del sistema
+- No des consejos genéricos
+- Si mencionas comandos, usa etiquetas <code>comando</code>
+- Da instrucciones DIRECTAS y específicas
+- Ordena las acciones por prioridad
+
+Datos actuales del sistema:
+${JSON.stringify(currentSystemData, null, 2)}`;
+                } else {
+                    // Para cualquier pregunta, recordar usar <code> para comandos
+                    contextPrompt += `\n\nNOTA: Si mencionas comandos de Linux o instrucciones técnicas, usa etiquetas <code>comando</code> para formatearlos correctamente.`;
                 }
                 
                 const response = await fetch('/api/ai/analyze', {
@@ -2386,7 +2421,7 @@ Responde en español, de forma estructurada y DETALLADA.`;
                 if (isLoading) {
                     messageDiv.innerHTML = `<strong style="color: #58a6ff;">🤖 Asistente:</strong><div style="margin-top: 5px; color: #8b949e; font-style: italic;">${content}</div>`;
                 } else {
-                    messageDiv.innerHTML = `<strong style="color: #58a6ff;">🤖 Asistente:</strong><div style="margin-top: 5px; color: #c9d1d9; white-space: pre-wrap;">${formatAIMessage(content)}</div>`;
+                    messageDiv.innerHTML = `<strong style="color: #58a6ff;">🤖 Asistente:</strong><div style="margin-top: 5px; color: #c9d1d9; line-height: 1.6;">${formatAIMessage(content)}</div>`;
                 }
             }
             
@@ -2396,17 +2431,145 @@ Responde en español, de forma estructurada y DETALLADA.`;
             return messageDiv;
         }
         
-        // Formatear mensaje de IA (markdown básico)
+        // Formatear mensaje de IA (markdown básico y HTML)
         function formatAIMessage(text) {
-            // Convertir números a listas
-            text = text.replace(/^(\d+)\.\s+(.+)$/gm, '<strong>$1.</strong> $2');
-            // Negrita para títulos
-            text = text.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-            // Código inline
-            text = text.replace(/`(.+?)`/g, '<code style="background: rgba(0,0,0,0.3); padding: 2px 4px; border-radius: 3px;">$1</code>');
-            // Bloques de código
-            text = text.replace(/```([\s\S]*?)```/g, '<pre style="background: rgba(0,0,0,0.5); padding: 10px; border-radius: 4px; overflow-x: auto;"><code>$1</code></pre>');
-            return escapeHtml(text);
+            if (!text) return '';
+            
+            // Preservar etiquetas HTML seguras que ya vienen en el texto de la IA
+            const safeTags = ['strong', 'code', 'pre', 'ul', 'ol', 'li', 'p', 'br', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6'];
+            const placeholders = [];
+            let placeholderIndex = 0;
+            
+            // Reemplazar etiquetas HTML seguras con placeholders temporales
+            // Procesar en orden inverso para manejar etiquetas anidadas
+            safeTags.reverse().forEach(tag => {
+                // Regex mejorado para capturar etiquetas incluso con contenido complejo
+                const regex = new RegExp(`<${tag}([^>]*)>([\\s\\S]*?)<\\/${tag}>`, 'gi');
+                let match;
+                while ((match = regex.exec(text)) !== null) {
+                    const fullMatch = match[0];
+                    const attrs = match[1] || '';
+                    const content = match[2] || '';
+                    const placeholder = `__HTML_PLACEHOLDER_${placeholderIndex}__`;
+                    
+                    placeholders[placeholderIndex] = { 
+                        tag, 
+                        attrs: attrs.trim(), 
+                        content: content,
+                        original: fullMatch 
+                    };
+                    
+                    // Reemplazar en el texto
+                    text = text.substring(0, match.index) + placeholder + text.substring(match.index + fullMatch.length);
+                    
+                    // Reiniciar el regex para buscar desde el principio
+                    regex.lastIndex = 0;
+                    placeholderIndex++;
+                }
+            });
+            
+            // Escapar el resto del HTML para seguridad
+            text = escapeHtml(text);
+            
+            // Restaurar etiquetas HTML preservadas con estilos mejorados
+            placeholders.forEach((tagInfo, index) => {
+                const placeholder = `__HTML_PLACEHOLDER_${index}__`;
+                let replacement = '';
+                
+                switch(tagInfo.tag.toLowerCase()) {
+                    case 'strong':
+                        // Aplicar formato mejorado a strong - más visible y destacado
+                        replacement = `<strong style="color: #58a6ff; font-weight: bold; font-size: 1.05em; display: inline-block; margin: 2px 0;">${tagInfo.content}</strong>`;
+                        break;
+                    case 'code':
+                        replacement = `<code style="background: rgba(0,0,0,0.3); padding: 2px 6px; border-radius: 3px; color: #c9d1d9; font-family: 'Courier New', monospace; font-size: 0.9em;">${tagInfo.content}</code>`;
+                        break;
+                    case 'pre':
+                        replacement = `<pre style="background: rgba(0,0,0,0.5); padding: 12px; border-radius: 4px; overflow-x: auto; margin: 10px 0; border-left: 3px solid #58a6ff;"><code style="color: #c9d1d9; font-family: 'Courier New', monospace; font-size: 0.85em; white-space: pre;">${tagInfo.content}</code></pre>`;
+                        break;
+                    default:
+                        replacement = tagInfo.original;
+                }
+                
+                // Reemplazar placeholder con el HTML formateado
+                text = text.replace(new RegExp(placeholder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), replacement);
+            });
+            
+            // Convertir markdown a HTML
+            // Negrita markdown **texto**
+            text = text.replace(/\*\*(.+?)\*\*/g, '<strong style="color: #58a6ff; font-weight: bold;">$1</strong>');
+            
+            // Números de lista con formato mejorado (1. texto)
+            text = text.replace(/^(\d+)\.\s+(.+)$/gm, '<div style="margin: 10px 0 8px 0;"><strong style="color: #58a6ff; font-size: 1.05em; font-weight: bold;">$1.</strong> <span style="color: #c9d1d9; margin-left: 5px;">$2</span></div>');
+            
+            // Preservar etiquetas code existentes primero
+            const codePlaceholders = [];
+            let codePlaceholderIndex = 0;
+            text = text.replace(/<code[^>]*>([\s\S]*?)<\/code>/gi, (match, content) => {
+                const placeholder = `__CODE_PLACEHOLDER_${codePlaceholderIndex}__`;
+                codePlaceholders[codePlaceholderIndex] = { content, placeholder };
+                codePlaceholderIndex++;
+                return placeholder;
+            });
+            
+            // Código inline markdown `código`
+            text = text.replace(/`([^`\n]+)`/g, (match, code) => {
+                return `<code style="background: rgba(0,0,0,0.3); padding: 2px 6px; border-radius: 3px; color: #c9d1d9; font-family: 'Courier New', monospace; font-size: 0.9em;">${code}</code>`;
+            });
+            
+            // Detectar comandos que empiezan con $ o # (prompt de shell) - formato mejorado
+            text = text.replace(/(?:^|\s|>|:)(\$|#)\s+([a-zA-Z0-9_\/\.\-\s\|<>'"`]+?)(?=\s*$|\s*<[^c]|\s*\.\s|\s*,\s|\s*;\s|\s*:\s|\s*\n\n|$)/gm, (match, prompt, command) => {
+                const trimmedCommand = command.trim();
+                // Solo formatear si parece un comando válido (más de 2 caracteres, contiene letras)
+                if (trimmedCommand.length > 2 && /[a-zA-Z]/.test(trimmedCommand) && !trimmedCommand.includes('<code')) {
+                    return ` <code style="background: rgba(0,0,0,0.3); padding: 2px 6px; border-radius: 3px; color: #c9d1d9; font-family: 'Courier New', monospace; font-size: 0.9em;">${prompt} ${trimmedCommand}</code>`;
+                }
+                return match;
+            });
+            
+            // Restaurar etiquetas code preservadas
+            codePlaceholders.forEach(placeholder => {
+                text = text.replace(placeholder.placeholder, `<code style="background: rgba(0,0,0,0.3); padding: 2px 6px; border-radius: 3px; color: #c9d1d9; font-family: 'Courier New', monospace; font-size: 0.9em;">${placeholder.content}</code>`);
+            });
+            
+            // Bloques de código markdown ```código```
+            text = text.replace(/```([\s\S]*?)```/g, '<pre style="background: rgba(0,0,0,0.5); padding: 12px; border-radius: 4px; overflow-x: auto; margin: 10px 0; border-left: 3px solid #58a6ff;"><code style="color: #c9d1d9; font-family: \'Courier New\', monospace; font-size: 0.85em; white-space: pre;">$1</code></pre>');
+            
+            // Listas con viñetas (- o *)
+            const lines = text.split('\n');
+            let inList = false;
+            let listContent = '';
+            const processedLines = [];
+            
+            lines.forEach(line => {
+                const listMatch = line.match(/^[-*]\s+(.+)$/);
+                if (listMatch) {
+                    if (!inList) {
+                        inList = true;
+                        listContent = '';
+                    }
+                    listContent += `<li style="margin: 4px 0; color: #c9d1d9; padding-left: 5px;">${listMatch[1]}</li>`;
+                } else {
+                    if (inList) {
+                        processedLines.push(`<ul style="margin: 10px 0; padding-left: 25px; color: #c9d1d9; list-style-type: disc;">${listContent}</ul>`);
+                        listContent = '';
+                        inList = false;
+                    }
+                    processedLines.push(line);
+                }
+            });
+            
+            if (inList) {
+                processedLines.push(`<ul style="margin: 10px 0; padding-left: 25px; color: #c9d1d9; list-style-type: disc;">${listContent}</ul>`);
+            }
+            
+            text = processedLines.join('\n');
+            
+            // Saltos de línea (convertir \n a <br> pero preservar párrafos)
+            text = text.replace(/\n\n+/g, '<br><br>');
+            text = text.replace(/\n/g, '<br>');
+            
+            return text;
         }
         
         // Escapar HTML

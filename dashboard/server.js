@@ -70,26 +70,90 @@ const io = new Server(server, {
     transports: ['websocket', 'polling']
 });
 
+// Almacenamiento de intentos de login fallidos (en memoria, se reinicia con el servidor)
+const loginAttempts = new Map();
+
+// Función para limpiar intentos antiguos
+function cleanOldAttempts() {
+    const now = Date.now();
+    for (const [ip, data] of loginAttempts.entries()) {
+        if (now - data.lastAttempt > config.auth.lockoutDuration) {
+            loginAttempts.delete(ip);
+        }
+    }
+}
+
 // Endpoint de login
 app.post('/api/login', async (req, res) => {
     try {
-        const { password } = req.body;
+        const { username, password } = req.body;
+        const clientIp = req.ip || req.connection.remoteAddress || req.headers['x-forwarded-for'] || 'unknown';
         
-        if (!password || typeof password !== 'string') {
-            return res.status(400).json({ error: 'Contraseña requerida' });
+        // Limpiar intentos antiguos
+        cleanOldAttempts();
+        
+        // Validación básica de entrada (protección contra inyección)
+        if (!username || typeof username !== 'string' || !password || typeof password !== 'string') {
+            return res.status(400).json({ error: 'Usuario y contraseña requeridos' });
         }
         
-        // Validar contraseña (comparación segura, sin SQL injection - no hay BD)
-        // Sanitizar entrada para prevenir inyecciones
+        // Verificar si la IP está bloqueada
+        const attemptData = loginAttempts.get(clientIp);
+        if (attemptData && attemptData.attempts >= config.auth.maxLoginAttempts) {
+            const timeLeft = Math.ceil((config.auth.lockoutDuration - (Date.now() - attemptData.lastAttempt)) / 1000 / 60);
+            return res.status(429).json({ 
+                error: `Demasiados intentos fallidos. Intenta nuevamente en ${timeLeft} minuto(s).` 
+            });
+        }
+        
+        // Sanitizar entrada (eliminar espacios y caracteres peligrosos)
+        const sanitizedUsername = username.trim().toLowerCase();
         const sanitizedPassword = password.trim();
-        const isValid = sanitizedPassword === config.auth.password;
+        
+        // Validar que no contengan caracteres peligrosos (protección adicional)
+        const dangerousChars = /[<>'"\\;]/;
+        if (dangerousChars.test(sanitizedUsername) || dangerousChars.test(sanitizedPassword)) {
+            return res.status(400).json({ error: 'Caracteres no permitidos en las credenciales' });
+        }
+        
+        // Validar credenciales
+        const isValidUsername = sanitizedUsername === config.auth.username.toLowerCase();
+        const isValidPassword = sanitizedPassword === config.auth.password;
+        const isValid = isValidUsername && isValidPassword;
         
         if (isValid) {
+            // Login exitoso - limpiar intentos fallidos
+            loginAttempts.delete(clientIp);
+            
             req.session.authenticated = true;
             req.session.loginTime = Date.now();
+            req.session.username = sanitizedUsername;
+            
+            console.log(`✅ Login exitoso desde ${clientIp} - Usuario: ${sanitizedUsername}`);
             res.json({ success: true, message: 'Login exitoso' });
         } else {
-            res.status(401).json({ error: 'Contraseña incorrecta' });
+            // Login fallido - registrar intento
+            if (!loginAttempts.has(clientIp)) {
+                loginAttempts.set(clientIp, { attempts: 0, lastAttempt: Date.now() });
+            }
+            
+            const attemptInfo = loginAttempts.get(clientIp);
+            attemptInfo.attempts++;
+            attemptInfo.lastAttempt = Date.now();
+            
+            const remainingAttempts = config.auth.maxLoginAttempts - attemptInfo.attempts;
+            
+            console.warn(`❌ Intento de login fallido desde ${clientIp} - Usuario: ${sanitizedUsername} (Intentos restantes: ${remainingAttempts})`);
+            
+            if (remainingAttempts <= 0) {
+                res.status(429).json({ 
+                    error: `Demasiados intentos fallidos. Tu IP ha sido bloqueada temporalmente.` 
+                });
+            } else {
+                res.status(401).json({ 
+                    error: `Credenciales incorrectas. Intentos restantes: ${remainingAttempts}` 
+                });
+            }
         }
     } catch (error) {
         console.error('Error en login:', error);

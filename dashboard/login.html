@@ -120,8 +120,13 @@
         
         <form id="loginForm">
             <div class="form-group">
+                <label for="username">Usuario</label>
+                <input type="text" id="username" name="username" required autofocus autocomplete="username">
+            </div>
+            
+            <div class="form-group">
                 <label for="password">Contraseña</label>
-                <input type="password" id="password" name="password" required autofocus>
+                <input type="password" id="password" name="password" required autocomplete="current-password">
             </div>
             
             <button type="submit" class="login-button" id="loginButton">Iniciar Sesión</button>
@@ -134,13 +139,23 @@
         const loginButton = document.getElementById('loginButton');
         const errorMessage = document.getElementById('errorMessage');
         
+        const usernameInput = document.getElementById('username');
+        
         form.addEventListener('submit', async (e) => {
             e.preventDefault();
             
+            const username = usernameInput.value.trim();
             const password = passwordInput.value;
+            
+            if (!username) {
+                showError('Por favor ingresa el usuario');
+                usernameInput.focus();
+                return;
+            }
             
             if (!password) {
                 showError('Por favor ingresa la contraseña');
+                passwordInput.focus();
                 return;
             }
             
@@ -153,7 +168,10 @@
                     headers: {
                         'Content-Type': 'application/json'
                     },
-                    body: JSON.stringify({ password: password })
+                    body: JSON.stringify({ 
+                        username: username,
+                        password: password 
+                    })
                 });
                 
                 const data = await response.json();

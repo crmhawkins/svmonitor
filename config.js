@@ -58,8 +58,11 @@ module.exports = {
     
     // Configuración de autenticación
     auth: {
+        username: process.env.ADMIN_USERNAME || 'admin',
         password: process.env.ADMIN_PASSWORD || 'H@wkins22',
-        sessionSecret: process.env.SESSION_SECRET || 'sentinel-secret-key-change-in-production'
+        sessionSecret: process.env.SESSION_SECRET || 'sentinel-secret-key-change-in-production',
+        maxLoginAttempts: 5, // Intentos máximos antes de bloquear
+        lockoutDuration: 15 * 60 * 1000 // 15 minutos en milisegundos
     },
     
     // Configuración de Automatización SOC
