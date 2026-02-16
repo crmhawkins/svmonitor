@@ -1,0 +1,39 @@
+﻿<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>SENTINEL HUB</title>
+    <script src="/socket.io/socket.io.js"></script>
+    <style>
+        body { background: #0d1117; color: #c9d1d9; font-family: sans-serif; padding: 20px; }
+        .card { background: #161b22; border: 1px solid #30363d; padding: 20px; border-radius: 8px; text-align: center; }
+        .panic { background: #da3633; color: white; border: none; padding: 20px; width: 100%; border-radius: 8px; font-weight: bold; cursor: pointer; margin-top: 20px; }
+        .console { background: #000; color: #39ff14; padding: 15px; height: 300px; overflow-y: auto; font-family: monospace; border-radius: 6px; text-align: left; }
+        .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; }
+        .stats { font-size: 2rem; color: #58a6ff; }
+    </style>
+</head>
+<body>
+    <h1>ðŸ›°ï¸ SISTEMA SENTINEL</h1>
+    <div class="grid">
+        <div class="card">CPU <div id="cpu" class="stats">0%</div></div>
+        <div class="card">MEM <div id="mem" class="stats">0%</div></div>
+        <div class="card">AMENAZA <div id="threat" class="stats" style="color:#ffa657">BAJA</div></div>
+    </div>
+    <button class="panic" onclick="if(confirm('Â¿BLOQUEAR TODO?')) socket.emit('panic_action')">ðŸš¨ PROTOCOLO DE PÃNICO</button>
+    <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 20px;">
+        <div><h3>ðŸŒ RED</h3><pre id="net" class="console"></pre></div>
+        <div><h3>ðŸ“‚ ARCHIVOS</h3><pre id="file" class="console"></pre></div>
+    </div>
+    <script>
+        const socket = io();
+        socket.on('ui_health', d => { document.getElementById('cpu').innerText = d.cpu+'%'; document.getElementById('mem').innerText = d.mem+'%'; });
+        socket.on('ui_network', d => { 
+            document.getElementById('net').innerText = d;
+            document.getElementById('threat').innerText = d.includes('SYN_SENT') ? 'CRÃTICA' : 'BAJA';
+            document.getElementById('threat').style.color = d.includes('SYN_SENT') ? '#da3633' : '#ffa657';
+        });
+        socket.on('ui_file', d => { document.getElementById('file').innerHTML = '['+new Date(d.ts).toLocaleTimeString()+'] '+d.detail+'\n' + document.getElementById('file').innerHTML; });
+    </script>
+</body>
+</html>
