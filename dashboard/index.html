@@ -2031,8 +2031,15 @@
         
         // Recopilar datos del sistema para enviar a la IA
         function collectSystemData() {
+            // Asegurar que todos los campos sean arrays
+            const processes = Array.isArray(systemData.processes) ? systemData.processes : [];
+            const files = Array.isArray(systemData.files) ? systemData.files : [];
+            const network = Array.isArray(systemData.network) ? systemData.network : [];
+            const crontab = Array.isArray(systemData.crontab) ? systemData.crontab : [];
+            const sites = Array.isArray(systemData.sites) ? systemData.sites : [];
+            
             // Preparar datos detallados para la IA
-            const procesosDetallados = systemData.processes.map(p => ({
+            const procesosDetallados = processes.map(p => ({
                 pid: p.pid,
                 comando: p.command,
                 cpu: p.cpu,
@@ -2042,11 +2049,11 @@
                 usuario: p.user || 'desconocido'
             }));
             
-            const archivosDetallados = systemData.files.map(f => ({
-                ruta: f.filePath || f.detail?.split(' ')[0] || f.detail,
+            const archivosDetallados = files.map(f => ({
+                ruta: f.filePath || (f.detail ? (typeof f.detail === 'string' ? f.detail.split(' ')[0] : f.detail) : 'desconocido'),
                 evento: f.events || 'MODIFY',
                 riesgo: f.risk || 'medium',
-                timestamp: f.ts || f.timestamp,
+                timestamp: f.ts || f.timestamp || Date.now(),
                 proceso_modificador: f.process ? {
                     pid: f.process.pid,
                     comando: f.process.command,
@@ -2054,16 +2061,16 @@
                 } : null
             }));
             
-            const conexionesDetalladas = systemData.network.map(n => ({
-                conexion: n.detail || n,
-                timestamp: n.ts || n.timestamp,
+            const conexionesDetalladas = network.map(n => ({
+                conexion: n.detail || (typeof n === 'string' ? n : JSON.stringify(n)),
+                timestamp: n.ts || n.timestamp || Date.now(),
                 riesgo: n.risk || 'medium'
             }));
             
-            const crontabsDetallados = systemData.crontab.map(c => ({
-                usuario: c.user,
-                tarea: c.cron,
-                timestamp: c.timestamp
+            const crontabsDetallados = crontab.map(c => ({
+                usuario: c.user || 'desconocido',
+                tarea: c.cron || c.command || 'desconocido',
+                timestamp: c.timestamp || Date.now()
             }));
             
             return {
@@ -2072,22 +2079,22 @@
                     total_archivos_modificados: archivosDetallados.length,
                     total_conexiones_sospechosas: conexionesDetalladas.length,
                     total_tareas_crontab: crontabsDetallados.length,
-                    sitios_web_caidos: systemData.sites.filter(s => s.status !== 'active').length
+                    sitios_web_caidos: sites.filter(s => s && s.status !== 'active').length
                 },
                 procesos_sospechosos: procesosDetallados,
                 archivos_modificados: archivosDetallados,
                 conexiones_red: conexionesDetalladas,
                 tareas_crontab: crontabsDetallados,
-                sitios_web: systemData.sites.filter(s => s.status !== 'active').map(s => ({
-                    dominio: s.domain,
-                    estado: s.status,
-                    error: s.error,
-                    ultima_verificacion: s.lastCheck
+                sitios_web: sites.filter(s => s && s.status !== 'active').map(s => ({
+                    dominio: s.domain || 'desconocido',
+                    estado: s.status || 'desconocido',
+                    error: s.error || null,
+                    ultima_verificacion: s.lastCheck || null
                 })),
                 recursos_sistema: {
-                    cpu: systemData.health.cpu,
-                    memoria: systemData.health.mem,
-                    timestamp: systemData.health.ts
+                    cpu: systemData.health?.cpu || 0,
+                    memoria: systemData.health?.mem || 0,
+                    timestamp: systemData.health?.ts || Date.now()
                 },
                 timestamp: new Date().toISOString()
             };
@@ -2108,10 +2115,10 @@
                 const systemData = collectSystemData();
                 
                 // Validar que hay datos antes de analizar
-                const hasData = systemData.processes.length > 0 || 
-                               systemData.files.length > 0 || 
-                               systemData.network.length > 0 || 
-                               systemData.crontab.length > 0;
+                const hasData = (Array.isArray(systemData.processes) && systemData.processes.length > 0) || 
+                               (Array.isArray(systemData.files) && systemData.files.length > 0) || 
+                               (Array.isArray(systemData.network) && systemData.network.length > 0) || 
+                               (Array.isArray(systemData.crontab) && systemData.crontab.length > 0);
                 
                 if (!hasData) {
                     loadingMsg.remove();
@@ -2136,25 +2143,25 @@ INSTRUCCIONES DE ANÁLISIS:
 1. RECONOCIMIENTO DEL ATAQUE:
    Analiza CADA elemento en los arrays proporcionados:
    
-   - PROCESOS SOSPECHOSOS (${systemData.processes.length} encontrados):
+   - PROCESOS SOSPECHOSOS (${Array.isArray(systemData.processes) ? systemData.processes.length : 0} encontrados):
      * Para CADA proceso, identifica: PID, comando ejecutado, razón de sospecha, uso de recursos
      * Explica QUÉ hace cada comando sospechoso
      * Identifica si hay procesos relacionados o patrones
      * Determina el tipo de amenaza (backdoor, miner, bot, etc.)
    
-   - ARCHIVOS MODIFICADOS (${systemData.files.length} encontrados):
+   - ARCHIVOS MODIFICADOS (${Array.isArray(systemData.files) ? systemData.files.length : 0} encontrados):
      * Para CADA archivo, analiza: ruta completa, tipo de evento (CREATE/MODIFY/DELETE), nivel de riesgo
      * Identifica el proceso que modificó cada archivo
      * Determina si las rutas son sospechosas (/tmp, /var/tmp, wp-content/uploads, etc.)
      * Explica qué tipo de ataque podría estar relacionado
    
-   - CONEXIONES DE RED (${systemData.network.length} encontradas):
+   - CONEXIONES DE RED (${Array.isArray(systemData.network) ? systemData.network.length : 0} encontradas):
      * Para CADA conexión, analiza: dirección IP, puerto, protocolo, estado
      * Identifica conexiones salientes desde PHP/Python/Perl
      * Determina si son conexiones legítimas o maliciosas
      * Correlaciona con procesos y archivos
    
-   - TAREAS CRONTAB (${systemData.crontab.length} encontradas):
+   - TAREAS CRONTAB (${Array.isArray(systemData.crontab) ? systemData.crontab.length : 0} encontradas):
      * Para CADA tarea, analiza: usuario, comando programado, frecuencia
      * Identifica tareas sospechosas o no autorizadas
      * Explica qué hace cada tarea y por qué es sospechosa
