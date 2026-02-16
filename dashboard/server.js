@@ -253,51 +253,144 @@ async function runSOCInvestigation() {
             sources: ['processes', 'files', 'network', 'crontab']
         });
         
+        // Recopilar datos sospechosos con más detalle y contexto
+        const recentProcesses = logStorage.processes.filter(p => p.timestamp > Date.now() - 300000).slice(-30);
+        const recentFiles = logStorage.files.filter(f => f.timestamp > Date.now() - 300000).slice(-30);
+        const recentNetwork = logStorage.network.filter(n => n.timestamp > Date.now() - 300000).slice(-30);
+        const recentCrontab = logStorage.crontab.filter(c => c.timestamp > Date.now() - 300000).slice(-20);
+        
+        // Preparar datos estructurados y detallados para la IA
         const suspiciousData = {
-            processes: logStorage.processes.filter(p => p.timestamp > Date.now() - 300000).slice(-20),
-            files: logStorage.files.filter(f => (f.risk === 'high' || f.risk === 'critical') && f.timestamp > Date.now() - 300000).slice(-20),
-            network: logStorage.network.filter(n => n.timestamp > Date.now() - 300000).slice(-20),
-            crontab: logStorage.crontab.filter(c => c.timestamp > Date.now() - 300000).slice(-10)
+            resumen: {
+                total_procesos: recentProcesses.length,
+                total_archivos: recentFiles.length,
+                total_conexiones: recentNetwork.length,
+                total_crontab: recentCrontab.length,
+                ventana_tiempo: 'Últimos 5 minutos',
+                timestamp: new Date().toISOString()
+            },
+            procesos_sospechosos: recentProcesses.map(p => ({
+                pid: p.pid,
+                comando: p.command,
+                cpu: p.cpu,
+                memoria: p.mem,
+                tiempo_ejecucion: p.time,
+                razon_sospechosa: p.reason,
+                usuario: p.user || 'desconocido',
+                timestamp: new Date(p.timestamp).toISOString(),
+                detalles_completos: p
+            })),
+            archivos_modificados: recentFiles.map(f => ({
+                ruta: f.filePath || f.detail?.split(' ')[0] || f.detail || 'desconocido',
+                evento: f.events || 'MODIFY',
+                riesgo: f.risk || 'medium',
+                timestamp: new Date(f.timestamp || f.ts || Date.now()).toISOString(),
+                proceso_modificador: f.process ? {
+                    pid: f.process.pid,
+                    comando: f.process.command,
+                    usuario: f.process.user
+                } : null,
+                detalles_completos: f
+            })),
+            conexiones_red: recentNetwork.map(n => ({
+                conexion: n.detail || n.data || (typeof n === 'string' ? n : JSON.stringify(n)),
+                timestamp: new Date(n.timestamp || Date.now()).toISOString(),
+                riesgo: n.risk || 'medium',
+                detalles_completos: n
+            })),
+            tareas_crontab: recentCrontab.map(c => ({
+                usuario: c.user || 'desconocido',
+                tarea: c.cron || c.command || 'desconocido',
+                timestamp: new Date(c.timestamp || Date.now()).toISOString(),
+                detalles_completos: c
+            })),
+            contexto_sistema: {
+                sistema_operativo: process.platform,
+                timestamp_analisis: new Date().toISOString(),
+                total_logs_almacenados: {
+                    procesos: logStorage.processes.length,
+                    archivos: logStorage.files.length,
+                    red: logStorage.network.length,
+                    crontab: logStorage.crontab.length
+                }
+            }
         };
         
         addLog('analyze', '✅ Datos recopilados', {
-            processes: suspiciousData.processes.length,
-            files: suspiciousData.files.length,
-            network: suspiciousData.network.length,
-            crontab: suspiciousData.crontab.length
+            procesos: suspiciousData.procesos_sospechosos.length,
+            archivos: suspiciousData.archivos_modificados.length,
+            conexiones: suspiciousData.conexiones_red.length,
+            crontab: suspiciousData.tareas_crontab.length
         });
         
         // Generar prompt para IA con comandos de investigación
         addLog('ai_request', '🤖 Preparando solicitud a IA para generar comandos de investigación', {
             model: config.aiApi.defaultModel,
             dataSummary: {
-                processes: suspiciousData.processes.length,
-                files: suspiciousData.files.length,
-                network: suspiciousData.network.length,
-                crontab: suspiciousData.crontab.length
-            }
+                procesos: suspiciousData.procesos_sospechosos.length,
+                archivos: suspiciousData.archivos_modificados.length,
+                conexiones: suspiciousData.conexiones_red.length,
+                crontab: suspiciousData.tareas_crontab.length
+            },
+            datos_detallados: 'Incluyendo información completa de cada elemento'
         });
         
-        const investigationPrompt = `Eres un analista SOC experto. Analiza estos datos sospechosos y genera comandos de investigación específicos para Linux.
+        const investigationPrompt = `Eres un analista SOC experto especializado en análisis forense de Linux. Analiza DETALLADAMENTE estos datos sospechosos y genera comandos de investigación específicos y precisos.
 
 IMPORTANTE: 
-- SOLO genera comandos de INVESTIGACIÓN, NUNCA de acción o eliminación
+- SOLO genera comandos de INVESTIGACIÓN, NUNCA de acción destructiva o eliminación
 - Los comandos deben ser seguros y solo para análisis
 - Formato: cada comando en una línea separada precedido de "CMD:"
+- Analiza CADA proceso, archivo, conexión y tarea específicamente
+- Genera comandos específicos basados en los datos reales proporcionados
 
-Datos sospechosos detectados:
+DATOS SOSPECHOSOS DETECTADOS (ANÁLISIS DETALLADO REQUERIDO):
+
+RESUMEN:
+- Procesos sospechosos: ${suspiciousData.resumen.total_procesos}
+- Archivos modificados: ${suspiciousData.resumen.total_archivos}
+- Conexiones de red: ${suspiciousData.resumen.total_conexiones}
+- Tareas crontab: ${suspiciousData.resumen.total_crontab}
+- Ventana de tiempo: ${suspiciousData.resumen.ventana_tiempo}
+
+DATOS COMPLETOS:
 ${JSON.stringify(suspiciousData, null, 2)}
 
-Genera comandos para:
-1. Investigar procesos sospechosos (ps, lsof, strace)
-2. Analizar archivos modificados (find, stat, file, strings)
-3. Buscar binarios/ejecutables ocultos (find con -executable, locate)
-4. Verificar conexiones de red (netstat, ss, lsof -i)
-5. Analizar crontab sospechoso (crontab -l, cat /etc/cron*)
+INSTRUCCIONES DE GENERACIÓN DE COMANDOS:
+
+Para CADA proceso sospechoso (${suspiciousData.procesos_sospechosos.length}):
+- Genera comandos para investigar el PID específico: ps, lsof, strace, cat /proc/PID/...
+- Analiza el comando ejecutado y sus argumentos
+- Verifica conexiones de red del proceso
+- Revisa archivos abiertos por el proceso
+
+Para CADA archivo modificado (${suspiciousData.archivos_modificados.length}):
+- Genera comandos para analizar la ruta específica: stat, file, strings, md5sum, sha256sum
+- Verifica permisos y propietario
+- Busca firmas maliciosas en el contenido
+- Analiza el proceso que lo modificó (si está disponible)
+
+Para CADA conexión de red (${suspiciousData.conexiones_red.length}):
+- Genera comandos para investigar la conexión: ss, netstat, lsof -i
+- Identifica el proceso asociado
+- Verifica la dirección IP y puerto
+- Analiza el tráfico si es posible
+
+Para CADA tarea crontab (${suspiciousData.tareas_crontab.length}):
+- Genera comandos para verificar la tarea: crontab -u usuario -l, cat /etc/cron*
+- Analiza el comando programado
+- Verifica archivos relacionados
+
+COMANDOS ADICIONALES:
+- Buscar binarios/ejecutables ocultos en rutas sospechosas (/tmp, /var/tmp, /dev/shm)
+- Verificar procesos relacionados o hijos
+- Analizar logs del sistema relacionados
+- Buscar archivos con permisos sospechosos
 
 Responde SOLO con los comandos en formato:
 CMD: comando1
 CMD: comando2
+CMD: comando3
 ...`;
 
         // Llamar a IA para generar comandos
@@ -337,32 +430,99 @@ CMD: comando2
                     });
                     
                     const response = JSON.parse(data);
-                    if (response.success && response.respuesta) {
-                        addLog('ai_response', '✅ Respuesta de IA procesada correctamente', {
-                            responseLength: response.respuesta.length
+                    
+                    // Verificar si hay error en la respuesta (modelo no encontrado, etc.)
+                    if (response.error) {
+                        const isModelNotFound = response.error.includes('not found') || response.error.includes('model');
+                        
+                        addLog('error', '❌ Error de la IA', {
+                            error: response.error,
+                            modelo_solicitado: config.aiApi.defaultModel,
+                            es_error_modelo: isModelNotFound,
+                            response_completa: response
                         });
                         
-                        // Extraer comandos de la respuesta
-                        const commands = response.respuesta.split('\n')
+                        investigation.status = 'error';
+                        
+                        if (isModelNotFound) {
+                            investigation.report = `ERROR: El modelo '${config.aiApi.defaultModel}' no está disponible en el servidor de IA.\n\n` +
+                                `SOLUCIÓN:\n` +
+                                `1. Instala el modelo en tu servidor de IA ejecutando:\n` +
+                                `   ollama pull ${config.aiApi.defaultModel}\n\n` +
+                                `2. O cambia el modelo en config.js o mediante la variable de entorno AI_MODEL\n\n` +
+                                `Modelos alternativos disponibles pueden ser: mistral, llama2, codellama, qwen2.5:7b`;
+                        } else {
+                            investigation.report = `Error de la IA: ${response.error}`;
+                        }
+                        
+                        io.emit('soc_investigation_update', investigation);
+                        return;
+                    }
+                    
+                    if (response.success && response.respuesta) {
+                        addLog('ai_response', '✅ Respuesta de IA procesada correctamente', {
+                            responseLength: response.respuesta.length,
+                            respuesta_preview: response.respuesta.substring(0, 300)
+                        });
+                        
+                        // Extraer comandos de la respuesta (múltiples formatos)
+                        let commands = response.respuesta.split('\n')
                             .filter(line => line.trim().startsWith('CMD:'))
                             .map(line => line.replace('CMD:', '').trim())
                             .filter(cmd => cmd.length > 0);
                         
+                        // Si no hay comandos con formato CMD:, intentar extraer de otras formas
+                        if (commands.length === 0) {
+                            const lines = response.respuesta.split('\n').filter(l => l.trim());
+                            lines.forEach(line => {
+                                // Buscar líneas que parecen comandos
+                                const trimmedLine = line.trim();
+                                // Comandos que empiezan con $ o #
+                                if (trimmedLine.match(/^(\$|#)\s+[a-zA-Z]/)) {
+                                    const cmd = trimmedLine.replace(/^(\$|#)\s+/, '').trim();
+                                    if (cmd.length > 0 && !commands.includes(cmd)) {
+                                        commands.push(cmd);
+                                    }
+                                }
+                                // Comandos comunes de Linux
+                                else if (trimmedLine.match(/^(ps|grep|kill|ls|cat|find|chmod|chown|rm|mv|cp|tar|wget|curl|netstat|ss|lsof|iptables|ufw|systemctl|service|journalctl|strings|file|stat|strace|tcpdump|nmap|whois|dig|ping|top|htop|df|du|free|last|history|crontab|passwd|useradd|userdel|su|id|whoami|w|who|uptime|uname|hostname|ip|ifconfig|route|mount|umount|rsync|scp|ssh|sudo)\s+/)) {
+                                    if (trimmedLine.length > 3 && !commands.includes(trimmedLine)) {
+                                        commands.push(trimmedLine);
+                                    }
+                                }
+                            });
+                        }
+                        
                         addLog('ai_response', `📝 Comandos generados por IA: ${commands.length}`, {
-                            commands: commands
+                            commands: commands,
+                            total_comandos: commands.length,
+                            formato_original: response.respuesta.substring(0, 500)
                         });
                         
-                        investigation.commands = commands;
-                        investigation.status = 'commands_generated';
-                        
-                        // Ejecutar comandos de investigación
-                        executeInvestigationCommands(investigation, commands);
+                        if (commands.length > 0) {
+                            investigation.commands = commands;
+                            investigation.status = 'commands_generated';
+                            
+                            // Ejecutar comandos de investigación
+                            executeInvestigationCommands(investigation, commands);
+                        } else {
+                            addLog('error', '❌ IA no generó comandos válidos', {
+                                respuesta_completa: response.respuesta,
+                                respuesta_length: response.respuesta.length
+                            });
+                            investigation.status = 'error';
+                            investigation.report = `La IA no generó comandos válidos. Respuesta recibida: ${response.respuesta.substring(0, 1000)}`;
+                            io.emit('soc_investigation_update', investigation);
+                        }
                     } else {
                         addLog('error', '❌ IA no generó respuesta válida', {
-                            response: response
+                            response: response,
+                            success: response.success,
+                            tiene_respuesta: !!response.respuesta,
+                            error: response.error || 'Sin error específico'
                         });
                         investigation.status = 'error';
-                        investigation.report = 'Error al generar comandos de investigación';
+                        investigation.report = `Error al generar comandos de investigación. ${response.error ? 'Error: ' + response.error : 'La IA no devolvió una respuesta válida.'}`;
                         io.emit('soc_investigation_update', investigation);
                     }
                 } catch (error) {
