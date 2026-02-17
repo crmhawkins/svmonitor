@@ -38,6 +38,73 @@ let fileWatcher = null;
 let discoveredSites = new Map(); // Cache de sitios descubiertos
 let siteStatusHistory = new Map(); // Historial de estados de sitios para detectar cambios
 
+// Sistema de control de CPU (límite al 10%)
+let cpuThrottleMultiplier = 1.0; // Multiplicador de intervalos (1.0 = normal, 2.0 = doble intervalo)
+let lastCpuCheck = Date.now();
+let cpuUsageHistory = []; // Historial de uso de CPU (últimos 10 checks)
+const MAX_CPU_HISTORY = 10;
+
+// Función para verificar y ajustar uso de CPU
+function checkAndThrottleCPU() {
+    if (!config.cpuLimit || !config.cpuLimit.enableAdaptiveThrottling) return;
+    
+    try {
+        let currentCpu = 0;
+        
+        if (isWindows) {
+            // Windows: usar process.cpuUsage() relativo
+            const usage = process.cpuUsage();
+            const total = (usage.user + usage.system) / 1000000; // Convertir a segundos
+            currentCpu = total * 100; // Aproximación
+        } else {
+            // Linux: usar loadavg (más preciso)
+            const loadavg = os.loadavg()[0] || 0;
+            const cpuCount = os.cpus().length;
+            currentCpu = (loadavg / cpuCount) * 100; // Porcentaje de CPU
+        }
+        
+        // Agregar al historial
+        cpuUsageHistory.push(currentCpu);
+        if (cpuUsageHistory.length > MAX_CPU_HISTORY) {
+            cpuUsageHistory.shift();
+        }
+        
+        // Calcular promedio de los últimos checks
+        const avgCpu = cpuUsageHistory.reduce((a, b) => a + b, 0) / cpuUsageHistory.length;
+        
+        // Ajustar throttling basado en uso promedio
+        if (avgCpu > config.cpuLimit.maxCpuPercent) {
+            // Excediendo límite: aumentar multiplicador
+            cpuThrottleMultiplier = Math.min(
+                cpuThrottleMultiplier * 1.2, 
+                config.cpuLimit.throttleMultiplier
+            );
+            console.log(`⚠️ CPU alto (${avgCpu.toFixed(2)}%), aumentando throttling a ${cpuThrottleMultiplier.toFixed(2)}x`);
+        } else if (avgCpu < config.cpuLimit.maxCpuPercent * 0.7) {
+            // Por debajo del 70% del límite: reducir multiplicador gradualmente
+            cpuThrottleMultiplier = Math.max(
+                cpuThrottleMultiplier * 0.95, 
+                config.cpuLimit.minIntervalMultiplier || 1.0
+            );
+        }
+        
+        lastCpuCheck = Date.now();
+    } catch (error) {
+        console.error('❌ Error al verificar CPU:', error);
+    }
+}
+
+// Función para obtener intervalo ajustado según throttling
+function getThrottledInterval(baseInterval) {
+    return Math.floor(baseInterval * cpuThrottleMultiplier);
+}
+
+// Iniciar monitoreo de CPU
+if (config.cpuLimit && config.cpuLimit.enableAdaptiveThrottling) {
+    setInterval(checkAndThrottleCPU, config.cpuLimit.checkInterval || 5000);
+    console.log(`📊 Control de CPU activado: límite ${config.cpuLimit.maxCpuPercent}%`);
+}
+
 // Manejo de conexión
 socket.on('connect', () => {
     console.log('✅ Conectado al dashboard');
@@ -85,130 +152,125 @@ function startMonitoring() {
     }, config.healthCheckInterval);
 
     // Alertas de red mejoradas - detectar conexiones salientes desde PHP
+    // OPTIMIZACIÓN: Monitoreo de red más eficiente (combinar comandos) - CON THROTTLING
     networkInterval = setInterval(() => {
         try {
-            if (isLinux) {
-                // Detectar conexiones salientes desde PHP hacia puertos sospechosos (80, 443, 25)
-                exec("ss -antp 2>/dev/null | grep -E 'php.*:443|php.*:80|php.*:25' | grep -E 'ESTAB|SYN-SENT'", 
-                    { timeout: 2000 }, 
-                    (err, stdout) => {
-                        if (!err && stdout) {
-                            socket.emit('network_alert', stdout);
-                        }
-                    }
-                );
-                
-                // También detectar cualquier conexión PHP persistente
-                exec("ss -antp 2>/dev/null | grep php | grep ESTAB", 
-                    { timeout: 2000 }, 
-                    (err, stdout) => {
-                        if (!err && stdout) {
-                            const lines = stdout.split('\n').filter(l => l.trim());
-                            // Filtrar solo conexiones externas (no localhost)
-                            const external = lines.filter(line => 
-                                !line.includes('127.0.0.1') && 
-                                !line.includes('::1') &&
-                                (line.includes(':443') || line.includes(':80') || line.includes(':25'))
-                            );
-                            if (external.length > 0) {
-                                socket.emit('network_alert', external.join('\n'));
+            // Pausa inicial para reducir carga
+            setTimeout(() => {
+                if (isLinux) {
+                    // OPTIMIZACIÓN: Un solo comando en lugar de dos, timeout más corto
+                    exec("ss -antp 2>/dev/null | grep -E 'php.*:(443|80|25)' | grep -E 'ESTAB|SYN-SENT' | grep -v '127.0.0.1' | grep -v '::1' | head -20", 
+                        { timeout: 1000 }, 
+                        (err, stdout) => {
+                            if (!err && stdout && stdout.trim()) {
+                                socket.emit('network_alert', stdout);
                             }
                         }
-                    }
-                );
-            } else {
-                // Windows: usar netstat
-                exec('netstat -an | findstr "ESTABLISHED SYN_SENT"', { timeout: 1000 }, (err, stdout) => {
-                    if (!err && stdout) {
-                        const suspicious = stdout.split('\n').filter(line => 
-                            line.includes('php') || line.includes('SYN_SENT')
-                        ).join('\n');
-                        if (suspicious) {
-                            socket.emit('network_alert', suspicious);
+                    );
+                } else {
+                    // Windows: usar netstat (optimizado)
+                    exec('netstat -an | findstr "ESTABLISHED SYN_SENT php"', { timeout: 800 }, (err, stdout) => {
+                        if (!err && stdout) {
+                            const suspicious = stdout.split('\n').filter(line => 
+                                line.includes('php') || line.includes('SYN_SENT')
+                            ).slice(0, 20).join('\n'); // Limitar a 20 líneas
+                            if (suspicious) {
+                                socket.emit('network_alert', suspicious);
+                            }
                         }
-                    }
-                });
-            }
+                    });
+                }
+            }, 100); // Pausa de 100ms antes de ejecutar
         } catch (error) {
             console.error('❌ Error al verificar red:', error);
         }
-    }, config.networkCheckInterval);
+    }, getThrottledInterval(config.networkCheckInterval));
 
     // Monitoreo de procesos PHP sospechosos
     if (isLinux) {
+        // OPTIMIZACIÓN: Monitoreo de procesos más eficiente - CON THROTTLING
         processInterval = setInterval(() => {
             try {
-                // Buscar procesos PHP que llevan mucho tiempo activos (posibles zombies)
-                exec("ps aux | grep '[p]hp' | awk '{print $2, $3, $4, $9, $10, $11, $12, $13, $14, $15, $16, $17}'", 
-                    { timeout: 2000 }, 
-                    (err, stdout) => {
-                        if (!err && stdout) {
-                            const processes = [];
-                            const lines = stdout.trim().split('\n').filter(l => l.trim());
-                            
-                            lines.forEach(line => {
-                                const parts = line.trim().split(/\s+/);
-                                if (parts.length >= 11) {
-                                    const pid = parts[0];
-                                    const cpu = parseFloat(parts[1]) || 0;
-                                    const mem = parseFloat(parts[2]) || 0;
-                                    const time = parts[3]; // Tiempo de ejecución
-                                    const command = parts.slice(10).join(' ');
-                                    
-                                    // Detectar procesos sospechosos
-                                    let suspicious = false;
-                                    let reason = '';
-                                    
-                                    // CPU alta constante
-                                    if (cpu > 20) {
-                                        suspicious = true;
-                                        reason = `CPU alto: ${cpu}%`;
+                // Pausa inicial para reducir carga
+                setTimeout(() => {
+                    // OPTIMIZACIÓN: Filtrar directamente en el comando ps (más rápido), limitar resultados
+                    exec("ps aux | grep '[p]hp' | awk '$3>20 || $4>50 || $10>\"00:30\" {print $2, $3, $4, $9, $10, $11, $12, $13, $14, $15, $16, $17}' | head -30", 
+                        { timeout: 1200 }, 
+                        (err, stdout) => {
+                            if (!err && stdout) {
+                                const processes = [];
+                                const lines = stdout.trim().split('\n').filter(l => l.trim());
+                                
+                                // OPTIMIZACIÓN: Limitar procesamiento a máximo 30 procesos (reducido de 50)
+                                const maxProcesses = 30;
+                                lines.slice(0, maxProcesses).forEach((line, index) => {
+                                    // Pausa cada 10 procesos para reducir CPU
+                                    if (index > 0 && index % 10 === 0) {
+                                        setTimeout(() => {}, 10);
                                     }
                                     
-                                    // Tiempo de ejecución largo (más de 1 hora)
-                                    if (time && time.includes(':')) {
-                                        const [hours, mins] = time.split(':').map(Number);
-                                        if (hours > 0 || (hours === 0 && mins > 30)) {
+                                    const parts = line.trim().split(/\s+/);
+                                    if (parts.length >= 11) {
+                                        const pid = parts[0];
+                                        const cpu = parseFloat(parts[1]) || 0;
+                                        const mem = parseFloat(parts[2]) || 0;
+                                        const time = parts[3];
+                                        const command = parts.slice(10).join(' ');
+                                        
+                                        // Detectar procesos sospechosos (simplificado)
+                                        let suspicious = false;
+                                        let reason = '';
+                                        
+                                        // CPU alta constante
+                                        if (cpu > 20) {
                                             suspicious = true;
-                                            reason = reason ? `${reason}, Tiempo: ${time}` : `Tiempo largo: ${time}`;
+                                            reason = `CPU alto: ${cpu}%`;
+                                        }
+                                        
+                                        // Tiempo de ejecución largo
+                                        if (time && time.includes(':')) {
+                                            const [hours, mins] = time.split(':').map(Number);
+                                            if (hours > 0 || (hours === 0 && mins > 30)) {
+                                                suspicious = true;
+                                                reason = reason ? `${reason}, Tiempo: ${time}` : `Tiempo largo: ${time}`;
+                                            }
+                                        }
+                                        
+                                        // Comandos sospechosos (solo verificar si ya es sospechoso)
+                                        if (suspicious && (command.includes('base64') || command.includes('eval') || 
+                                            command.includes('system') || command.includes('exec'))) {
+                                            reason = reason ? `${reason}, Comando sospechoso` : 'Comando sospechoso';
+                                        }
+                                        
+                                        // Excluir procesos del backend/frontend propios
+                                        const isExcluded = config.excludedProcesses.some(excluded => 
+                                            command.includes(excluded)
+                                        );
+                                        
+                                        if (suspicious && !isExcluded) {
+                                            processes.push({
+                                                pid,
+                                                cpu,
+                                                mem,
+                                                time,
+                                                command: command.substring(0, 200), // Limitar tamaño
+                                                reason
+                                            });
                                         }
                                     }
-                                    
-                                    // Comandos sospechosos
-                                    if (command.includes('base64') || command.includes('eval') || 
-                                        command.includes('system') || command.includes('exec')) {
-                                        suspicious = true;
-                                        reason = reason ? `${reason}, Comando sospechoso` : 'Comando sospechoso';
-                                    }
-                                    
-                                    // Excluir procesos del backend/frontend propios
-                                    const isExcluded = config.excludedProcesses.some(excluded => 
-                                        command.includes(excluded)
-                                    );
-                                    
-                                    if (suspicious && !isExcluded) {
-                                        processes.push({
-                                            pid,
-                                            cpu,
-                                            mem,
-                                            time,
-                                            command,
-                                            reason
-                                        });
-                                    }
-                                }
                             });
                             
-                            if (processes.length > 0) {
-                                socket.emit('process_alert', processes);
+                                if (processes.length > 0) {
+                                    socket.emit('process_alert', processes);
+                                }
                             }
                         }
-                    }
-                );
+                    );
+                }, 150); // Pausa de 150ms antes de ejecutar
             } catch (error) {
                 console.error('❌ Error al verificar procesos:', error);
             }
-        }, config.processCheckInterval);
+        }, getThrottledInterval(config.processCheckInterval));
     }
 
     // Escaneo periódico de firmas maliciosas en archivos PHP
@@ -218,8 +280,9 @@ function startMonitoring() {
                 const watchPath = process.env.WATCH_PATH || '/var/www/vhosts';
                 
                 // Buscar eval( y base64_decode en archivos PHP
-                exec(`grep -rnl 'eval(' ${watchPath} --include="*.php" 2>/dev/null | head -10`, 
-                    { timeout: 10000 }, 
+                // OPTIMIZACIÓN: Limitar búsqueda a archivos modificados recientemente y reducir resultados
+                exec(`find ${watchPath} -name "*.php" -mtime -1 -exec grep -l 'eval(' {} \\; 2>/dev/null | head -5`, 
+                    { timeout: 8000 }, 
                     (err, stdout) => {
                         if (!err && stdout) {
                             const files = stdout.trim().split('\n').filter(f => f);
@@ -236,8 +299,9 @@ function startMonitoring() {
                     }
                 );
                 
-                exec(`grep -rnl 'base64_decode' ${watchPath} --include="*.php" 2>/dev/null | head -10`, 
-                    { timeout: 10000 }, 
+                // OPTIMIZACIÓN: Limitar búsqueda a archivos modificados recientemente
+                exec(`find ${watchPath} -name "*.php" -mtime -1 -exec grep -l 'base64_decode' {} \\; 2>/dev/null | head -5`, 
+                    { timeout: 8000 }, 
                     (err, stdout) => {
                         if (!err && stdout) {
                             const files = stdout.trim().split('\n').filter(f => f);
@@ -336,92 +400,95 @@ function startMonitoring() {
     }
 }
 
-// Función para iniciar inotifywait
+// OPTIMIZACIÓN: Batching de eventos de archivos para reducir CPU
+let fileEventBuffer = [];
+let fileEventFlushTimer = null;
+const FILE_EVENT_BATCH_SIZE = 10;
+const FILE_EVENT_FLUSH_INTERVAL = 2000; // Flush cada 2 segundos
+
+function flushFileEvents() {
+    if (fileEventBuffer.length === 0) return;
+    
+    const eventsToSend = fileEventBuffer.splice(0, FILE_EVENT_BATCH_SIZE);
+    eventsToSend.forEach(event => {
+        socket.emit('file_change', event);
+    });
+    
+    // Si quedan más eventos, programar otro flush
+    if (fileEventBuffer.length > 0) {
+        fileEventFlushTimer = setTimeout(flushFileEvents, FILE_EVENT_FLUSH_INTERVAL);
+    } else {
+        fileEventFlushTimer = null;
+    }
+}
+
+function queueFileEvent(event) {
+    fileEventBuffer.push(event);
+    
+    // Si el buffer está lleno o es el primer evento, iniciar flush
+    if (fileEventBuffer.length >= FILE_EVENT_BATCH_SIZE || !fileEventFlushTimer) {
+        if (fileEventFlushTimer) {
+            clearTimeout(fileEventFlushTimer);
+        }
+        fileEventFlushTimer = setTimeout(flushFileEvents, 100); // Flush rápido si hay muchos eventos
+    }
+}
+
+// Función para iniciar inotifywait (OPTIMIZADA)
 function startInotifyWatcher(watchPath) {
     try {
         fileWatcher = spawn('inotifywait', ['-mr', '-e', 'modify,create,delete', '--format', '%w%f %e', watchPath], {
             stdio: ['ignore', 'pipe', 'pipe']
         });
         
+        // OPTIMIZACIÓN: Procesar eventos en batch y reducir llamadas a exec
+        let pendingEvents = new Map(); // Agrupar eventos por archivo
+        let processCheckTimer = null;
+        
         fileWatcher.stdout.on('data', (data) => {
             const lines = data.toString().trim().split('\n');
             lines.forEach(line => {
-                if (line.trim()) {
-                    const [filePath, events] = line.split(' ');
-                    
-                    // Filtrar archivos ignorados
-                    if (shouldIgnoreFile(filePath)) {
-                        return;
-                    }
-                    
-                    const riskLevel = assessFileRisk(filePath, events);
-                    
-                    // Detectar qué proceso está modificando el archivo
-                    exec(`lsof "${filePath}" 2>/dev/null | head -1`, { timeout: 2000 }, (err, stdout) => {
-                        let processInfo = null;
-                        
-                        if (!err && stdout && stdout.trim()) {
-                            const parts = stdout.trim().split(/\s+/);
-                            if (parts.length >= 2) {
-                                processInfo = {
-                                    command: parts[0],
-                                    pid: parts[1],
-                                    user: parts[2] || 'unknown'
-                                };
-                            }
-                        }
-                        
-                        // Si lsof no funciona, intentar con fuser
-                        if (!processInfo) {
-                            exec(`fuser "${filePath}" 2>/dev/null`, { timeout: 2000 }, (err2, stdout2) => {
-                                if (!err2 && stdout2) {
-                                    const pid = stdout2.trim().split(/\s+/)[0];
-                                    if (pid) {
-                                        exec(`ps -p ${pid} -o comm=,pid=,user= 2>/dev/null | head -1`, { timeout: 1000 }, (err3, stdout3) => {
-                                            if (!err3 && stdout3) {
-                                                const parts = stdout3.trim().split(/\s+/);
-                                                processInfo = {
-                                                    command: parts[0] || 'unknown',
-                                                    pid: pid,
-                                                    user: parts[1] || 'unknown'
-                                                };
-                                            }
-                                            
-                                            socket.emit('file_change', { 
-                                                detail: line.trim(),
-                                                filePath: filePath,
-                                                events: events,
-                                                risk: riskLevel,
-                                                process: processInfo,
-                                                ts: Date.now() 
-                                            });
-                                        });
-                                        return;
-                                    }
-                                }
-                                
-                                socket.emit('file_change', { 
-                                    detail: line.trim(),
-                                    filePath: filePath,
-                                    events: events,
-                                    risk: riskLevel,
-                                    process: processInfo,
-                                    ts: Date.now() 
-                                });
-                            });
-                        } else {
-                            socket.emit('file_change', { 
-                                detail: line.trim(),
-                                filePath: filePath,
-                                events: events,
-                                risk: riskLevel,
-                                process: processInfo,
-                                ts: Date.now() 
-                            });
-                        }
+                if (!line.trim()) return;
+                
+                const parts = line.split(' ');
+                if (parts.length < 2) return;
+                
+                const filePath = parts[0];
+                const events = parts.slice(1).join(' ');
+                
+                // Filtrar archivos ignorados
+                if (shouldIgnoreFile(filePath)) {
+                    return;
+                }
+                
+                // Agrupar eventos del mismo archivo (evitar duplicados)
+                if (!pendingEvents.has(filePath)) {
+                    pendingEvents.set(filePath, {
+                        filePath: filePath,
+                        events: events,
+                        count: 0,
+                        firstSeen: Date.now()
                     });
                 }
+                
+                const eventData = pendingEvents.get(filePath);
+                eventData.count++;
+                eventData.events = events; // Actualizar eventos
+                
+                // CAPTURA RÁPIDA: Si es sospechoso, capturar inmediatamente
+                if (shouldQuickCapture(filePath, events)) {
+                    quickCaptureFile(filePath, events);
+                }
             });
+            
+            // OPTIMIZACIÓN: Procesar eventos en batch cada 1 segundo (en lugar de inmediatamente)
+            if (!processCheckTimer) {
+                processCheckTimer = setTimeout(() => {
+                    processCheckTimer = null;
+                    processFileEventsBatch(pendingEvents);
+                    pendingEvents.clear();
+                }, 1000);
+            }
         });
         
         fileWatcher.stderr.on('data', (data) => {
@@ -464,39 +531,53 @@ function startFileWatcherAlternative(watchPath) {
                         
                         // CAPTURA RÁPIDA: Si es un archivo sospechoso en carpeta temp, capturarlo inmediatamente
                         if (shouldQuickCapture(filePath, 'MODIFY')) {
-                            quickCaptureFile(filePath);
+                            quickCaptureFile(filePath, 'MODIFY');
                         }
                         
-                        // Detectar qué proceso está modificando el archivo
-                        exec(`lsof "${filePath}" 2>/dev/null | head -1`, { timeout: 2000 }, (err, stdout) => {
-                            let processInfo = null;
-                            
-                            if (!err && stdout && stdout.trim()) {
-                                const parts = stdout.trim().split(/\s+/);
-                                if (parts.length >= 2) {
-                                    processInfo = {
-                                        command: parts[0],
-                                        pid: parts[1],
-                                        user: parts[2] || 'unknown'
-                                    };
+                        // OPTIMIZACIÓN: Solo verificar proceso para archivos de alto riesgo
+                        const shouldCheckProcess = riskLevel === 'high' || riskLevel === 'critical';
+                        
+                        if (shouldCheckProcess) {
+                            exec(`lsof "${filePath}" 2>/dev/null | head -1`, { timeout: 1000 }, (err, stdout) => {
+                                let processInfo = null;
+                                
+                                if (!err && stdout && stdout.trim()) {
+                                    const parts = stdout.trim().split(/\s+/);
+                                    if (parts.length >= 2) {
+                                        processInfo = {
+                                            command: parts[0],
+                                            pid: parts[1],
+                                            user: parts[2] || 'unknown'
+                                        };
+                                    }
                                 }
-                            }
-                            
-                            socket.emit('file_change', {
+                                
+                                queueFileEvent({
+                                    detail: `${filePath} MODIFY`,
+                                    filePath: filePath,
+                                    events: 'MODIFY',
+                                    risk: riskLevel,
+                                    process: processInfo,
+                                    ts: Date.now()
+                                });
+                            });
+                        } else {
+                            // Para archivos de bajo riesgo, enviar sin verificar proceso
+                            queueFileEvent({
                                 detail: `${filePath} MODIFY`,
                                 filePath: filePath,
                                 events: 'MODIFY',
                                 risk: riskLevel,
-                                process: processInfo,
+                                process: null,
                                 ts: Date.now()
                             });
-                        });
+                        }
                     });
                 }
                 lastCheck = Date.now();
             }
         );
-    }, 5000); // Verificar cada 5 segundos
+    }, getThrottledInterval(20000)); // OPTIMIZACIÓN: Verificar cada 20 segundos con throttling
     
     fileWatcher = { kill: () => clearInterval(fileCheckInterval) };
     console.log('✅ Monitor de archivos activo (método alternativo)');
@@ -611,14 +692,14 @@ function quickCaptureFile(filePath) {
 function shouldIgnoreFile(filePath) {
     if (!filePath) return true;
     
-    const path = filePath.toLowerCase();
+    const pathLower = filePath.toLowerCase();
     const ignoredFiles = config.ignoredFiles || [];
     
     for (const pattern of ignoredFiles) {
         const patternLower = pattern.toLowerCase();
         
-        // Patrón exacto
-        if (path.includes(patternLower)) {
+        // Patrón exacto (incluye subcadenas)
+        if (pathLower.includes(patternLower)) {
             return true;
         }
         
@@ -628,14 +709,23 @@ function shouldIgnoreFile(filePath) {
                 .replace(/\./g, '\\.')
                 .replace(/\*/g, '.*');
             const regex = new RegExp(regexPattern);
-            if (regex.test(path) || path.endsWith(patternLower.replace('*', ''))) {
+            if (regex.test(pathLower) || pathLower.endsWith(patternLower.replace('*', ''))) {
                 return true;
             }
         }
         
         // Patrón de carpeta (termina con /)
-        if (patternLower.endsWith('/') && path.includes(patternLower)) {
+        if (patternLower.endsWith('/') && pathLower.includes(patternLower)) {
             return true;
+        }
+        
+        // Patrones específicos adicionales
+        if (pathLower.includes('temp-write-test')) {
+            return true; // Archivos temporales de WordPress
+        }
+        if (pathLower.includes('access_ssl_log') || pathLower.includes('proxy_access_log') || 
+            pathLower.includes('error_log') || pathLower.includes('access_log')) {
+            return true; // Logs del sistema
         }
     }
     

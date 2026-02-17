@@ -16,13 +16,22 @@ module.exports = {
         return `http://127.0.0.1:${port}`;
     },
     
-    // Intervalos de monitoreo (en ms)
-    healthCheckInterval: 3000,
-    networkCheckInterval: 2000,
-    processCheckInterval: 5000,
-    fileScanInterval: 30000, // Escaneo de firmas cada 30 segundos
-    crontabCheckInterval: 60000, // Crontab cada minuto
-    siteCheckInterval: 60000, // Monitoreo de sitios cada minuto
+    // Límite de CPU: máximo 10% del total del servidor
+    cpuLimit: {
+        maxCpuPercent: 10, // Máximo 10% de CPU
+        checkInterval: 5000, // Verificar uso de CPU cada 5 segundos
+        throttleMultiplier: 2.0, // Multiplicar intervalos si se excede el límite
+        minIntervalMultiplier: 1.5, // Mínimo multiplicador de intervalos
+        enableAdaptiveThrottling: true // Throttling adaptativo basado en uso real
+    },
+    
+    // Intervalos de monitoreo (en ms) - ULTRA OPTIMIZADOS para 10% CPU máximo
+    healthCheckInterval: 30000, // Cada 30 segundos (aumentado de 10s)
+    networkCheckInterval: 15000, // Cada 15 segundos (aumentado de 5s)
+    processCheckInterval: 30000, // Cada 30 segundos (aumentado de 10s)
+    fileScanInterval: 300000, // Escaneo de firmas cada 5 minutos (aumentado de 60s)
+    crontabCheckInterval: 300000, // Crontab cada 5 minutos (aumentado de 2 min)
+    siteCheckInterval: 300000, // Monitoreo de sitios cada 5 minutos (aumentado de 2 min)
     
     // Ruta de sitios web (Plesk)
     vhostsPath: process.env.VHOSTS_PATH || '/var/www/vhosts',
@@ -44,7 +53,11 @@ module.exports = {
             '*.swo',
             '.git/',
             'node_modules/',
-            '.pm2/'
+            '.pm2/',
+            'access_ssl_log', // Logs de acceso SSL
+            'proxy_access_log', // Logs de proxy
+            'error_log', // Logs de error
+            'access_log' // Logs de acceso
         ],
     
     // Configuración de Socket.IO

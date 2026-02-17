@@ -21,12 +21,14 @@ app.use(express.urlencoded({ extended: true }));
 app.use(session({
     secret: config.auth.sessionSecret,
     resave: false,
-    saveUninitialized: false,
+    saveUninitialized: false, // No crear sesión hasta que se autentique
     cookie: {
         secure: false, // Cambiar a true si usas HTTPS
         httpOnly: true,
-        maxAge: 24 * 60 * 60 * 1000 // 24 horas
-    }
+        maxAge: 24 * 60 * 60 * 1000, // 24 horas
+        sameSite: 'lax'
+    },
+    name: 'sentinel.session' // Nombre personalizado para evitar conflictos
 }));
 
 // Middleware de autenticación
@@ -196,11 +198,21 @@ app.use(express.static(path.join(__dirname)));
 
 // Ruta principal - verificar autenticación
 app.get('/', (req, res) => {
-    if (req.session && req.session.authenticated) {
+    // Verificar autenticación explícitamente
+    const isAuthenticated = req.session && req.session.authenticated === true;
+    
+    if (isAuthenticated) {
+        console.log(`✅ Usuario autenticado accediendo al dashboard desde ${req.ip}`);
         res.sendFile(path.join(__dirname, 'index.html'));
     } else {
+        console.log(`🔒 Usuario no autenticado, redirigiendo a login desde ${req.ip}`);
         res.sendFile(path.join(__dirname, 'login.html'));
     }
+});
+
+// Servir login.html explícitamente
+app.get('/login.html', (req, res) => {
+    res.sendFile(path.join(__dirname, 'login.html'));
 });
 
 // Crear carpetas necesarias para SOC
@@ -595,6 +607,11 @@ async function monitorDiskSpace() {
         const timeDiff = now - lastDiskCheck.timestamp;
         const hoursDiff = timeDiff / (1000 * 60 * 60);
         
+        // Log para debugging
+        if (diskInfo) {
+            console.log(`📊 Monitoreo de disco: ${diskInfo.usagePercent}% usado (${diskInfo.used} usado, ${diskInfo.available} disponible)`);
+        }
+        
         // Verificar crecimiento rápido de carpetas
         if (lastDiskCheck.sizes && Object.keys(lastDiskCheck.sizes).length > 0) {
             for (const [folderPath, currentSize] of Object.entries(folderSizes)) {
@@ -603,7 +620,7 @@ async function monitorDiskSpace() {
                 const growthMB = growth / (1024 * 1024);
                 const growthMBPerHour = hoursDiff > 0 ? growthMB / hoursDiff : 0;
                 
-                const rapidGrowthThreshold = config.diskMonitoring?.rapidGrowthThreshold || 1000; // 1GB por hora
+                const rapidGrowthThreshold = config.diskMonitoring?.rapidGrowthThreshold || 500; // 500MB por hora
                 
                 if (growthMBPerHour > rapidGrowthThreshold && hoursDiff > 0.1) {
                     const message = `🚨 CRECIMIENTO RÁPIDO DETECTADO: ${folderPath} está creciendo a ${growthMBPerHour.toFixed(2)}MB/hora (${(growthMB / 1024).toFixed(2)}GB en las últimas ${hoursDiff.toFixed(2)} horas)`;
@@ -617,7 +634,8 @@ async function monitorDiskSpace() {
                     });
                     
                     // Enviar correo si está habilitado
-                    if (config.email.enabled && config.email.alerts.rapidGrowth) {
+                    const emailConfig = loadEmailConfig();
+                    if (emailConfig.enabled && emailConfig.alerts.rapidGrowth) {
                         sendEmailAlert(
                             'Crecimiento Rápido de Archivos Detectado',
                             `Se detectó crecimiento rápido en: ${folderPath}\n\nCrecimiento: ${growthMBPerHour.toFixed(2)}MB/hora\nTamaño actual: ${(currentSize / 1024 / 1024 / 1024).toFixed(2)}GB\nCrecimiento en período: ${(growthMB / 1024).toFixed(2)}GB en ${hoursDiff.toFixed(2)} horas\n\nEsto puede indicar actividad sospechosa o un problema en el sistema.`,
@@ -630,8 +648,8 @@ async function monitorDiskSpace() {
         
         // Verificar uso de disco
         if (diskInfo) {
-            const alertThreshold = config.diskMonitoring?.alertThreshold || 85;
-            const criticalThreshold = config.diskMonitoring?.criticalThreshold || 95;
+            const alertThreshold = config.diskMonitoring?.alertThreshold || 75; // 750GB de 1TB
+            const criticalThreshold = config.diskMonitoring?.criticalThreshold || 90;
             
             if (diskInfo.usagePercent >= criticalThreshold) {
                 const message = `🚨 CRÍTICO: Disco al ${diskInfo.usagePercent}% de capacidad (${diskInfo.used} usado, ${diskInfo.available} disponible)`;
@@ -643,6 +661,16 @@ async function monitorDiskSpace() {
                     available: diskInfo.available,
                     message: message
                 });
+                
+                // Enviar correo si está habilitado
+                const emailConfig = loadEmailConfig();
+                if (emailConfig.enabled && emailConfig.alerts.diskSpace) {
+                    sendEmailAlert(
+                        'Espacio en Disco Crítico',
+                        `El disco está al ${diskInfo.usagePercent}% de capacidad.\n\nUsado: ${diskInfo.used}\nDisponible: ${diskInfo.available}\n\nSe requiere acción inmediata para liberar espacio.`,
+                        'diskSpace'
+                    );
+                }
             } else if (diskInfo.usagePercent >= alertThreshold) {
                 const message = `⚠️ ALERTA: Disco al ${diskInfo.usagePercent}% de capacidad (${diskInfo.used} usado, ${diskInfo.available} disponible)`;
                 console.warn(message);
@@ -653,6 +681,16 @@ async function monitorDiskSpace() {
                     available: diskInfo.available,
                     message: message
                 });
+                
+                // Enviar correo si está habilitado
+                const emailConfig = loadEmailConfig();
+                if (emailConfig.enabled && emailConfig.alerts.diskSpace) {
+                    sendEmailAlert(
+                        'Alerta de Espacio en Disco',
+                        `El disco está al ${diskInfo.usagePercent}% de capacidad (750GB de 1TB alcanzado).\n\nUsado: ${diskInfo.used}\nDisponible: ${diskInfo.available}\n\nSe recomienda revisar y limpiar archivos.`,
+                        'diskSpace'
+                    );
+                }
             }
         }
         
@@ -2151,33 +2189,53 @@ io.on('connection', (socket) => {
         }
     });
     
+    // OPTIMIZACIÓN: Throttling para eventos de archivos (máximo 10 por segundo)
+    let fileEventThrottle = [];
+    let fileEventThrottleTimer = null;
+    
     socket.on('file_change', (data) => {
         if (data && typeof data === 'object') {
-            // Guardar en almacenamiento persistente
-            addLog('files', data);
+            // Agregar a throttle buffer
+            fileEventThrottle.push(data);
             
-            // Incrementar contador de logs sospechosos si es de riesgo alto
-            if (data.risk === 'high' || data.risk === 'critical') {
-                suspiciousLogCount++;
-                
-                // Detectar actividad extremadamente sospechosa (muchos archivos críticos en poco tiempo)
-                const recentCriticalFiles = logStorage.files.filter(f => 
-                    (f.risk === 'high' || f.risk === 'critical') && 
-                    Date.now() - f.timestamp < 2 * 60 * 1000
-                ).length;
-                
-                if (recentCriticalFiles >= 20 && config.email.enabled && config.email.alerts.criticalActivity) {
-                    sendEmailAlert(
-                        'Actividad Extremadamente Sospechosa: Múltiples Archivos Críticos',
-                        `Se han detectado ${recentCriticalFiles} archivos con riesgo crítico o alto en los últimos 2 minutos.\n\nÚltimo archivo: ${data.filePath || 'N/A'}\nRiesgo: ${data.risk}\nEventos: ${data.events || 'N/A'}\n\nEsto puede indicar un ataque activo en curso. Se requiere investigación inmediata.`,
-                        'criticalActivity'
-                    );
-                }
-                
-                checkSOCInvestigation();
+            // Procesar en batch cada 1 segundo
+            if (!fileEventThrottleTimer) {
+                fileEventThrottleTimer = setTimeout(() => {
+                    const eventsToProcess = fileEventThrottle.splice(0, 50); // Máximo 50 por batch
+                    fileEventThrottleTimer = null;
+                    
+                    eventsToProcess.forEach(eventData => {
+                        // Guardar en almacenamiento persistente
+                        addLog('files', eventData);
+                        
+                        // Incrementar contador de logs sospechosos si es de riesgo alto
+                        if (eventData.risk === 'high' || eventData.risk === 'critical') {
+                            suspiciousLogCount++;
+                            
+                            // Detectar actividad extremadamente sospechosa (muchos archivos críticos en poco tiempo)
+                            const recentCriticalFiles = logStorage.files.filter(f => 
+                                (f.risk === 'high' || f.risk === 'critical') && 
+                                Date.now() - f.timestamp < 2 * 60 * 1000
+                            ).length;
+                            
+                            if (recentCriticalFiles >= 20) {
+                                const emailConfig = loadEmailConfig();
+                                if (emailConfig.enabled && emailConfig.alerts.criticalActivity) {
+                                    sendEmailAlert(
+                                        'Actividad Extremadamente Sospechosa: Múltiples Archivos Críticos',
+                                        `Se han detectado ${recentCriticalFiles} archivos con riesgo crítico o alto en los últimos 2 minutos.\n\nÚltimo archivo: ${eventData.filePath || 'N/A'}\nRiesgo: ${eventData.risk}\nEventos: ${eventData.events || 'N/A'}\n\nEsto puede indicar un ataque activo en curso. Se requiere investigación inmediata.`,
+                                        'criticalActivity'
+                                    );
+                                }
+                            }
+                            
+                            checkSOCInvestigation();
+                        }
+                        
+                        io.emit('ui_file', eventData);
+                    });
+                }, 1000);
             }
-            
-            io.emit('ui_file', data);
         }
     });
     

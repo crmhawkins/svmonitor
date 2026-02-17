@@ -1628,7 +1628,7 @@
                         }
                     });
                 });
-                if (systemData.network.length > 50) systemData.network = systemData.network.slice(0, 50);
+                if (systemData.network.length > 200) systemData.network = systemData.network.slice(0, 200);
             }
             
             // Cargar historial de archivos
@@ -1642,10 +1642,10 @@
                 // Ordenar por timestamp (más reciente primero) y cargar
                 const sortedFiles = history.files.sort((a, b) => b.timestamp - a.timestamp);
                 
-                // Actualizar systemData con historial de archivos
-                systemData.files = sortedFiles.slice(0, 50);
+                // Actualizar systemData con historial de archivos (aumentado a 200 para ver más archivos)
+                systemData.files = sortedFiles.slice(0, 200);
                 
-                sortedFiles.slice(0, 50).forEach(file => {
+                sortedFiles.slice(0, 200).forEach(file => {
                     createFileEntry(file, fileEl);
                 });
             }
@@ -2019,8 +2019,8 @@
                 }
             });
             
-            // Limitar a 50 entradas
-            while (netEl.children.length > 50) {
+            // Limitar a 200 entradas (aumentado para ver más conexiones)
+            while (netEl.children.length > 200) {
                 netEl.removeChild(netEl.lastChild);
             }
             
@@ -2088,14 +2088,14 @@
                 fileEl.appendChild(entry);
             }
             
-            // Limitar a 50 entradas
-            while (fileEl.children.length > 50) {
+            // Limitar a 200 entradas (aumentado para ver más archivos)
+            while (fileEl.children.length > 200) {
                 fileEl.removeChild(fileEl.lastChild);
             }
             
             // Actualizar systemData para la IA
             systemData.files.push(data);
-            if (systemData.files.length > 50) systemData.files.shift();
+            if (systemData.files.length > 200) systemData.files.shift();
         }
         
         function triggerPanic() {
