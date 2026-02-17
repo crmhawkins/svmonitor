@@ -708,6 +708,7 @@
         <button class="tab" onclick="switchTab('soc')">🛡️ Automatización SOC</button>
         <button class="tab" onclick="switchTab('captured')">🚨 Archivos Capturados</button>
         <button class="tab" onclick="switchTab('disk')">💾 Espacio en Disco</button>
+        <button class="tab" onclick="switchTab('email-config')">📧 Configuración de Correo</button>
     </div>
     
     <!-- Pestaña: Monitoreo -->
@@ -994,6 +995,139 @@
                 <button onclick="cleanupAllFolders()" style="background: #238636; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-weight: bold;">
                     🧹 Limpiar Carpetas
                 </button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Pestaña: Configuración de Correo -->
+    <div id="tab-email-config" class="tab-content">
+        <div style="background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 20px; margin-bottom: 20px;">
+            <h3 style="margin-bottom: 15px; color: #58a6ff;">📧 Configuración de Correo Electrónico</h3>
+            <p style="color: #8b949e; margin-bottom: 20px;">
+                Configura los destinatarios y parámetros SMTP para recibir alertas por correo electrónico.
+            </p>
+            
+            <form id="emailConfigForm" onsubmit="saveEmailConfig(event)">
+                <!-- Estado del sistema de correo -->
+                <div style="background: #0d1117; padding: 15px; border-radius: 6px; border: 1px solid #30363d; margin-bottom: 20px;">
+                    <label style="display: flex; align-items: center; gap: 10px; color: #c9d1d9; cursor: pointer;">
+                        <input type="checkbox" id="emailEnabled" style="width: 20px; height: 20px; cursor: pointer;">
+                        <span style="font-weight: bold;">Habilitar sistema de correo electrónico</span>
+                    </label>
+                    <p style="color: #8b949e; font-size: 0.85rem; margin-top: 10px; margin-left: 30px;">
+                        Cuando está habilitado, se enviarán correos automáticamente cuando se detecten alertas críticas.
+                    </p>
+                </div>
+                
+                <!-- Configuración SMTP -->
+                <div style="background: #0d1117; padding: 20px; border-radius: 6px; border: 1px solid #30363d; margin-bottom: 20px;">
+                    <h4 style="color: #58a6ff; margin-top: 0; margin-bottom: 15px;">⚙️ Configuración SMTP</h4>
+                    
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 15px;">
+                        <div>
+                            <label style="display: block; color: #c9d1d9; margin-bottom: 5px; font-weight: bold;">Servidor SMTP</label>
+                            <input type="text" id="smtpHost" placeholder="smtp.gmail.com" style="width: 100%; padding: 10px; background: #161b22; border: 1px solid #30363d; border-radius: 4px; color: #c9d1d9; font-size: 0.9rem;">
+                        </div>
+                        <div>
+                            <label style="display: block; color: #c9d1d9; margin-bottom: 5px; font-weight: bold;">Puerto</label>
+                            <input type="number" id="smtpPort" placeholder="587" style="width: 100%; padding: 10px; background: #161b22; border: 1px solid #30363d; border-radius: 4px; color: #c9d1d9; font-size: 0.9rem;">
+                        </div>
+                    </div>
+                    
+                    <div style="margin-bottom: 15px;">
+                        <label style="display: flex; align-items: center; gap: 10px; color: #c9d1d9; cursor: pointer;">
+                            <input type="checkbox" id="smtpSecure" style="width: 18px; height: 18px; cursor: pointer;">
+                            <span>Conexión segura (SSL/TLS) - Usar para puerto 465</span>
+                        </label>
+                    </div>
+                    
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 15px;">
+                        <div>
+                            <label style="display: block; color: #c9d1d9; margin-bottom: 5px; font-weight: bold;">Usuario SMTP</label>
+                            <input type="text" id="smtpUser" placeholder="tu-email@gmail.com" style="width: 100%; padding: 10px; background: #161b22; border: 1px solid #30363d; border-radius: 4px; color: #c9d1d9; font-size: 0.9rem;">
+                        </div>
+                        <div>
+                            <label style="display: block; color: #c9d1d9; margin-bottom: 5px; font-weight: bold;">Contraseña SMTP</label>
+                            <input type="password" id="smtpPass" placeholder="Contraseña o contraseña de aplicación" style="width: 100%; padding: 10px; background: #161b22; border: 1px solid #30363d; border-radius: 4px; color: #c9d1d9; font-size: 0.9rem;">
+                        </div>
+                    </div>
+                    
+                    <div>
+                        <label style="display: block; color: #c9d1d9; margin-bottom: 5px; font-weight: bold;">Correo remitente (From)</label>
+                        <input type="email" id="emailFrom" placeholder="sentinel@herasoft.ai" style="width: 100%; padding: 10px; background: #161b22; border: 1px solid #30363d; border-radius: 4px; color: #c9d1d9; font-size: 0.9rem;">
+                    </div>
+                </div>
+                
+                <!-- Destinatarios -->
+                <div style="background: #0d1117; padding: 20px; border-radius: 6px; border: 1px solid #30363d; margin-bottom: 20px;">
+                    <h4 style="color: #58a6ff; margin-top: 0; margin-bottom: 15px;">📬 Destinatarios</h4>
+                    <p style="color: #8b949e; font-size: 0.85rem; margin-bottom: 15px;">
+                        Ingresa las direcciones de correo que recibirán las alertas. Separa múltiples direcciones con comas.
+                    </p>
+                    <textarea id="emailTo" placeholder="admin@herasoft.ai, otro@email.com" rows="3" style="width: 100%; padding: 10px; background: #161b22; border: 1px solid #30363d; border-radius: 4px; color: #c9d1d9; font-size: 0.9rem; font-family: inherit; resize: vertical;"></textarea>
+                </div>
+                
+                <!-- Tipos de alertas -->
+                <div style="background: #0d1117; padding: 20px; border-radius: 6px; border: 1px solid #30363d; margin-bottom: 20px;">
+                    <h4 style="color: #58a6ff; margin-top: 0; margin-bottom: 15px;">🔔 Tipos de Alertas</h4>
+                    <p style="color: #8b949e; font-size: 0.85rem; margin-bottom: 15px;">
+                        Selecciona qué tipos de alertas quieres recibir por correo.
+                    </p>
+                    
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                        <label style="display: flex; align-items: center; gap: 10px; color: #c9d1d9; cursor: pointer; padding: 10px; background: #161b22; border-radius: 4px;">
+                            <input type="checkbox" id="alertCriticalActivity" style="width: 18px; height: 18px; cursor: pointer;">
+                            <div>
+                                <div style="font-weight: bold;">Actividad Extremadamente Sospechosa</div>
+                                <div style="font-size: 0.85rem; color: #8b949e;">Múltiples archivos o procesos sospechosos detectados</div>
+                            </div>
+                        </label>
+                        
+                        <label style="display: flex; align-items: center; gap: 10px; color: #c9d1d9; cursor: pointer; padding: 10px; background: #161b22; border-radius: 4px;">
+                            <input type="checkbox" id="alertMassDowntime" style="width: 18px; height: 18px; cursor: pointer;">
+                            <div>
+                                <div style="font-weight: bold;">Caída Generalizada</div>
+                                <div style="font-size: 0.85rem; color: #8b949e;">30% o más de sitios web caídos</div>
+                            </div>
+                        </label>
+                        
+                        <label style="display: flex; align-items: center; gap: 10px; color: #c9d1d9; cursor: pointer; padding: 10px; background: #161b22; border-radius: 4px;">
+                            <input type="checkbox" id="alertDiskSpace" style="width: 18px; height: 18px; cursor: pointer;">
+                            <div>
+                                <div style="font-weight: bold;">Espacio en Disco</div>
+                                <div style="font-size: 0.85rem; color: #8b949e;">Disco al 75% o más de capacidad</div>
+                            </div>
+                        </label>
+                        
+                        <label style="display: flex; align-items: center; gap: 10px; color: #c9d1d9; cursor: pointer; padding: 10px; background: #161b22; border-radius: 4px;">
+                            <input type="checkbox" id="alertRapidGrowth" style="width: 18px; height: 18px; cursor: pointer;">
+                            <div>
+                                <div style="font-weight: bold;">Crecimiento Rápido</div>
+                                <div style="font-size: 0.85rem; color: #8b949e;">Carpetas creciendo más de 500MB/hora</div>
+                            </div>
+                        </label>
+                    </div>
+                </div>
+                
+                <!-- Botones de acción -->
+                <div style="display: flex; gap: 10px; justify-content: flex-end;">
+                    <button type="button" onclick="testEmailConfig()" style="background: #58a6ff; color: white; border: none; padding: 12px 24px; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 0.9rem;">
+                        ✉️ Probar Configuración
+                    </button>
+                    <button type="submit" style="background: #238636; color: white; border: none; padding: 12px 24px; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 0.9rem;">
+                        💾 Guardar Configuración
+                    </button>
+                </div>
+            </form>
+        </div>
+        
+        <!-- Información de ayuda -->
+        <div style="background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 20px;">
+            <h3 style="margin-bottom: 15px; color: #58a6ff;">ℹ️ Información de Ayuda</h3>
+            <div style="color: #8b949e; line-height: 1.6;">
+                <p><strong style="color: #c9d1d9;">Gmail:</strong> Usa smtp.gmail.com, puerto 587 (TLS) o 465 (SSL). Necesitarás una "Contraseña de aplicación" en lugar de tu contraseña normal.</p>
+                <p><strong style="color: #c9d1d9;">Otros proveedores:</strong> Consulta la documentación de tu proveedor de correo para los parámetros SMTP correctos.</p>
+                <p><strong style="color: #c9d1d9;">Nota:</strong> Los cambios se guardan en el servidor y se aplican inmediatamente. No se requiere reiniciar el servicio.</p>
             </div>
         </div>
     </div>

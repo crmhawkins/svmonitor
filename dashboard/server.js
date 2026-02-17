@@ -413,22 +413,70 @@ let lastEmailSent = {
     rapidGrowth: 0
 };
 
+// Ruta del archivo de configuración de correo
+const emailConfigPath = path.join(__dirname, '..', 'email-config.json');
+
+// Cargar configuración de correo desde archivo
+function loadEmailConfig() {
+    try {
+        if (fs.existsSync(emailConfigPath)) {
+            const data = fs.readFileSync(emailConfigPath, 'utf8');
+            return JSON.parse(data);
+        }
+    } catch (error) {
+        console.error('Error al cargar configuración de correo:', error);
+    }
+    // Retornar configuración por defecto
+    return {
+        enabled: config.email.enabled,
+        smtp: config.email.smtp,
+        from: config.email.from,
+        to: config.email.to,
+        alerts: config.email.alerts
+    };
+}
+
+// Guardar configuración de correo en archivo
+function saveEmailConfig(emailConfig) {
+    try {
+        fs.writeFileSync(emailConfigPath, JSON.stringify(emailConfig, null, 2), 'utf8');
+        // Actualizar config en memoria
+        config.email = emailConfig;
+        // Reinicializar transportador
+        initEmailTransporter();
+        return true;
+    } catch (error) {
+        console.error('Error al guardar configuración de correo:', error);
+        return false;
+    }
+}
+
 // Inicializar transportador de correo
 function initEmailTransporter() {
-    if (!config.email.enabled) {
+    // Cargar configuración desde archivo si existe
+    const emailConfig = loadEmailConfig();
+    
+    if (!emailConfig.enabled) {
         console.log('📧 Sistema de correo deshabilitado');
+        emailTransporter = null;
         return;
     }
     
     try {
+        if (!emailConfig.smtp || !emailConfig.smtp.host || !emailConfig.smtp.auth || !emailConfig.smtp.auth.user) {
+            console.log('📧 Sistema de correo no configurado correctamente');
+            emailTransporter = null;
+            return;
+        }
+        
         emailTransporter = nodemailer.createTransport({
-            host: config.email.smtp.host,
-            port: config.email.smtp.port,
-            secure: config.email.smtp.secure,
-            auth: config.email.smtp.auth.user ? {
-                user: config.email.smtp.auth.user,
-                pass: config.email.smtp.auth.pass
-            } : undefined
+            host: emailConfig.smtp.host,
+            port: emailConfig.smtp.port,
+            secure: emailConfig.smtp.secure,
+            auth: {
+                user: emailConfig.smtp.auth.user,
+                pass: emailConfig.smtp.auth.pass
+            }
         });
         
         console.log('📧 Sistema de correo inicializado');
@@ -440,7 +488,8 @@ function initEmailTransporter() {
 
 // Enviar correo de alerta
 async function sendEmailAlert(subject, message, type = 'alert') {
-    if (!config.email.enabled || !emailTransporter) {
+    const emailConfig = loadEmailConfig();
+    if (!emailConfig.enabled || !emailTransporter) {
         return false;
     }
     
@@ -454,8 +503,8 @@ async function sendEmailAlert(subject, message, type = 'alert') {
     
     try {
         const mailOptions = {
-            from: config.email.from,
-            to: config.email.to.join(', '),
+            from: emailConfig.from,
+            to: emailConfig.to.join(', '),
             subject: `🚨 SENTINEL: ${subject}`,
             html: `
                 <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
@@ -1759,6 +1808,139 @@ Responde en formato estructurado con:
     } catch (error) {
         console.error('Error al analizar archivo:', error);
         res.status(500).json({ error: 'Error al analizar archivo' });
+    }
+});
+
+// Endpoints para configuración de correo (emailConfigPath ya está definido arriba)
+
+// Cargar configuración de correo desde archivo
+function loadEmailConfig() {
+    try {
+        if (fs.existsSync(emailConfigPath)) {
+            const data = fs.readFileSync(emailConfigPath, 'utf8');
+            return JSON.parse(data);
+        }
+    } catch (error) {
+        console.error('Error al cargar configuración de correo:', error);
+    }
+    // Retornar configuración por defecto
+    return {
+        enabled: config.email.enabled,
+        smtp: config.email.smtp,
+        from: config.email.from,
+        to: config.email.to,
+        alerts: config.email.alerts
+    };
+}
+
+// Guardar configuración de correo en archivo
+function saveEmailConfig(emailConfig) {
+    try {
+        fs.writeFileSync(emailConfigPath, JSON.stringify(emailConfig, null, 2), 'utf8');
+        // Actualizar config en memoria
+        config.email = emailConfig;
+        // Reinicializar transportador
+        initEmailTransporter();
+        return true;
+    } catch (error) {
+        console.error('Error al guardar configuración de correo:', error);
+        return false;
+    }
+}
+
+app.get('/api/email/config', requireAuth, (req, res) => {
+    try {
+        const emailConfig = loadEmailConfig();
+        // No enviar la contraseña en la respuesta
+        const safeConfig = {
+            ...emailConfig,
+            smtp: {
+                ...emailConfig.smtp,
+                auth: {
+                    ...emailConfig.smtp.auth,
+                    pass: emailConfig.smtp.auth.pass ? '***' : '' // Ocultar contraseña
+                }
+            }
+        };
+        res.json({ success: true, config: safeConfig });
+    } catch (error) {
+        console.error('Error al obtener configuración de correo:', error);
+        res.status(500).json({ error: 'Error al obtener configuración' });
+    }
+});
+
+app.post('/api/email/config', requireAuth, (req, res) => {
+    try {
+        const emailConfig = req.body;
+        
+        // Validación básica
+        if (emailConfig.enabled) {
+            if (!emailConfig.smtp || !emailConfig.smtp.host || !emailConfig.smtp.auth || !emailConfig.smtp.auth.user) {
+                return res.status(400).json({ error: 'Configuración SMTP incompleta' });
+            }
+            if (!emailConfig.from || !emailConfig.to || emailConfig.to.length === 0) {
+                return res.status(400).json({ error: 'Correo remitente y destinatarios son requeridos' });
+            }
+        }
+        
+        // Si la contraseña viene como '***', mantener la actual
+        const currentConfig = loadEmailConfig();
+        if (emailConfig.smtp && emailConfig.smtp.auth && emailConfig.smtp.auth.pass === '***') {
+            emailConfig.smtp.auth.pass = currentConfig.smtp.auth.pass;
+        }
+        
+        if (saveEmailConfig(emailConfig)) {
+            res.json({ success: true, message: 'Configuración guardada correctamente' });
+        } else {
+            res.status(500).json({ error: 'Error al guardar configuración' });
+        }
+    } catch (error) {
+        console.error('Error al guardar configuración de correo:', error);
+        res.status(500).json({ error: 'Error al guardar configuración' });
+    }
+});
+
+app.post('/api/email/test', requireAuth, async (req, res) => {
+    try {
+        const testConfig = req.body;
+        
+        if (!testConfig.enabled) {
+            return res.status(400).json({ error: 'El sistema de correo está deshabilitado' });
+        }
+        
+        // Crear transportador temporal para prueba
+        const testTransporter = nodemailer.createTransport({
+            host: testConfig.smtp.host,
+            port: testConfig.smtp.port,
+            secure: testConfig.smtp.secure,
+            auth: testConfig.smtp.auth
+        });
+        
+        // Enviar correo de prueba
+        const mailOptions = {
+            from: testConfig.from,
+            to: testConfig.to.join(', '),
+            subject: '🧪 Prueba de Configuración - Sentinel',
+            html: `
+                <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+                    <div style="background: #0d1117; color: #c9d1d9; padding: 20px; border-radius: 8px;">
+                        <h2 style="color: #3fb950; margin-top: 0;">✅ Correo de Prueba Exitoso</h2>
+                        <p>Este es un correo de prueba del sistema Sentinel de monitoreo de seguridad.</p>
+                        <p>Si recibes este correo, significa que la configuración SMTP es correcta.</p>
+                        <div style="color: #8b949e; font-size: 0.85rem; margin-top: 20px; border-top: 1px solid #30363d; padding-top: 15px;">
+                            <p>Timestamp: ${new Date().toISOString()}</p>
+                        </div>
+                    </div>
+                </div>
+            `,
+            text: 'Este es un correo de prueba del sistema Sentinel. Si recibes este correo, la configuración SMTP es correcta.'
+        };
+        
+        await testTransporter.sendMail(mailOptions);
+        res.json({ success: true, message: 'Correo de prueba enviado correctamente' });
+    } catch (error) {
+        console.error('Error al enviar correo de prueba:', error);
+        res.status(500).json({ error: `Error al enviar correo: ${error.message}` });
     }
 });
 
