@@ -66,12 +66,12 @@ module.exports = {
         fallbackModel: process.env.AI_FALLBACK_MODEL || 'mistral'
     },
     
-    // Configuración de logs persistentes
+    // Configuración de logs persistentes (OPTIMIZADO: reducido para ahorrar RAM)
     logBufferSize: {
-        network: 200,    // Últimas 200 conexiones de red
-        files: 200,      // Últimos 200 cambios de archivos
-        processes: 100,  // Últimos 100 procesos sospechosos
-        crontab: 50      // Últimas 50 tareas de crontab
+        network: 100,    // Últimas 100 conexiones de red (reducido de 200)
+        files: 100,      // Últimos 100 cambios de archivos (reducido de 200)
+        processes: 50,   // Últimos 50 procesos sospechosos (reducido de 100)
+        crontab: 30      // Últimas 30 tareas de crontab (reducido de 50)
     },
     
     // Configuración de autenticación
@@ -89,7 +89,11 @@ module.exports = {
         investigationThreshold: 10, // Investigar cada 10 logs sospechosos
         investigationInterval: 300000, // Verificar cada 5 minutos
         quarantinePath: process.env.QUARANTINE_PATH || '/var/sentinel/quarantine',
-        reportsPath: process.env.REPORTS_PATH || '/var/sentinel/reports'
+        reportsPath: process.env.REPORTS_PATH || '/var/sentinel/reports',
+        // Límite de tamaño para carpetas (2GB por defecto)
+        maxFolderSize: 2 * 1024 * 1024 * 1024, // 2GB en bytes
+        // Porcentaje de espacio a liberar cuando se alcanza el límite (20%)
+        cleanupPercentage: 0.2
     },
     
     // Configuración de captura rápida de archivos sospechosos
@@ -128,6 +132,51 @@ module.exports = {
         // Ruta donde guardar archivos capturados
         capturePath: process.env.CAPTURE_PATH || '/var/sentinel/captured',
         // Tamaño máximo de archivo a capturar (en bytes, 5MB)
-        maxFileSize: 5 * 1024 * 1024
+        maxFileSize: 5 * 1024 * 1024,
+        // Límite de tamaño para carpeta de capturas (2GB)
+        maxFolderSize: 2 * 1024 * 1024 * 1024, // 2GB en bytes
+        // Porcentaje de espacio a liberar cuando se alcanza el límite (20%)
+        cleanupPercentage: 0.2
+    },
+    
+    // Configuración de monitoreo de espacio en disco
+    diskMonitoring: {
+        // Intervalo de verificación de espacio (cada 2 minutos - más agresivo)
+        checkInterval: 2 * 60 * 1000,
+        // Umbral de alerta: porcentaje de uso del disco
+        alertThreshold: 75, // Alerta cuando el disco esté al 75% (750GB de 1TB)
+        // Umbral crítico: porcentaje de uso del disco
+        criticalThreshold: 90, // Crítico cuando el disco esté al 90%
+        // Umbral de crecimiento rápido: MB por hora
+        rapidGrowthThreshold: 500, // Alerta si crece más de 500MB por hora
+        // Rutas a monitorear
+        monitoredPaths: [
+            process.env.QUARANTINE_PATH || '/var/sentinel/quarantine',
+            process.env.REPORTS_PATH || '/var/sentinel/reports',
+            process.env.CAPTURE_PATH || '/var/sentinel/captured'
+        ]
+    },
+    
+    // Configuración de correo electrónico
+    email: {
+        enabled: process.env.EMAIL_ENABLED === 'true' || false,
+        smtp: {
+            host: process.env.SMTP_HOST || 'smtp.gmail.com',
+            port: parseInt(process.env.SMTP_PORT) || 587,
+            secure: process.env.SMTP_SECURE === 'true' || false, // true para 465, false para otros
+            auth: {
+                user: process.env.SMTP_USER || '',
+                pass: process.env.SMTP_PASS || ''
+            }
+        },
+        from: process.env.EMAIL_FROM || 'sentinel@herasoft.ai',
+        to: process.env.EMAIL_TO ? process.env.EMAIL_TO.split(',') : ['admin@herasoft.ai'],
+        // Alertas que activan envío de correo
+        alerts: {
+            criticalActivity: true,      // Actividad extremadamente sospechosa
+            massDowntime: true,          // Caída generalizada de sitios
+            diskSpace: true,             // Espacio en disco bajo
+            rapidGrowth: true             // Crecimiento rápido de archivos
+        }
     }
 };

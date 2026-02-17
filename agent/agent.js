@@ -568,6 +568,15 @@ function quickCaptureFile(filePath) {
             fs.mkdirSync(capturePath, { recursive: true });
         }
         
+        // Verificar tamaño de la carpeta antes de capturar
+        const maxFolderSize = config.quickCapture?.maxFolderSize || (2 * 1024 * 1024 * 1024); // 2GB
+        const currentFolderSize = getFolderSize(capturePath);
+        
+        if (currentFolderSize >= maxFolderSize) {
+            // Limpiar archivos antiguos antes de capturar
+            cleanupCaptureFolder(capturePath, maxFolderSize);
+        }
+        
         // Generar nombre único para el archivo capturado
         const fileName = path.basename(filePath);
         const timestamp = Date.now();

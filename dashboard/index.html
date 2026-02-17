@@ -707,6 +707,7 @@
         <button class="tab" onclick="switchTab('ai')">🤖 Análisis de IA</button>
         <button class="tab" onclick="switchTab('soc')">🛡️ Automatización SOC</button>
         <button class="tab" onclick="switchTab('captured')">🚨 Archivos Capturados</button>
+        <button class="tab" onclick="switchTab('disk')">💾 Espacio en Disco</button>
     </div>
     
     <!-- Pestaña: Monitoreo -->
@@ -940,6 +941,59 @@
                         <p style="margin-top: 20px;">Analizando archivo con IA...</p>
                     </div>
                 </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Pestaña: Monitoreo de Espacio en Disco -->
+    <div id="tab-disk" class="tab-content">
+        <div style="background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 20px; margin-bottom: 20px;">
+            <h3 style="margin-bottom: 15px; color: #58a6ff;">💾 Monitoreo de Espacio en Disco</h3>
+            <p style="color: #8b949e; margin-bottom: 15px;">
+                Sistema de monitoreo automático que detecta crecimiento rápido de archivos y alerta cuando el espacio en disco está bajo.
+            </p>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-top: 20px;">
+                <div style="background: #0d1117; padding: 15px; border-radius: 6px; border: 1px solid #30363d;">
+                    <div style="color: #8b949e; font-size: 0.9rem;">Uso de Disco</div>
+                    <div id="diskUsagePercent" style="font-size: 2rem; color: #58a6ff; font-weight: bold;">--</div>
+                    <div id="diskUsageDetails" style="color: #8b949e; font-size: 0.85rem; margin-top: 5px;">--</div>
+                </div>
+                <div style="background: #0d1117; padding: 15px; border-radius: 6px; border: 1px solid #30363d;">
+                    <div style="color: #8b949e; font-size: 0.9rem;">Cuarentena</div>
+                    <div id="quarantineSize" style="font-size: 1.5rem; color: #ffa657; font-weight: bold;">--</div>
+                    <div style="color: #8b949e; font-size: 0.85rem; margin-top: 5px;">Límite: 2GB</div>
+                </div>
+                <div style="background: #0d1117; padding: 15px; border-radius: 6px; border: 1px solid #30363d;">
+                    <div style="color: #8b949e; font-size: 0.9rem;">Capturas</div>
+                    <div id="captureSize" style="font-size: 1.5rem; color: #ffa657; font-weight: bold;">--</div>
+                    <div style="color: #8b949e; font-size: 0.85rem; margin-top: 5px;">Límite: 2GB</div>
+                </div>
+                <div style="background: #0d1117; padding: 15px; border-radius: 6px; border: 1px solid #30363d;">
+                    <div style="color: #8b949e; font-size: 0.9rem;">Reportes</div>
+                    <div id="reportsSize" style="font-size: 1.5rem; color: #ffa657; font-weight: bold;">--</div>
+                    <div style="color: #8b949e; font-size: 0.85rem; margin-top: 5px;">Límite: 2GB</div>
+                </div>
+            </div>
+        </div>
+        
+        <div style="background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 20px; margin-bottom: 20px;">
+            <h3 style="margin-bottom: 15px; color: #58a6ff;">📊 Historial de Alertas</h3>
+            <div id="diskAlerts" style="max-height: 400px; overflow-y: auto;">
+                <div class="empty-state" style="text-align: center; padding: 40px; color: #8b949e;">
+                    No hay alertas de espacio en disco...
+                </div>
+            </div>
+        </div>
+        
+        <div style="background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 20px;">
+            <h3 style="margin-bottom: 15px; color: #58a6ff;">⚙️ Acciones</h3>
+            <div style="display: flex; gap: 10px;">
+                <button onclick="refreshDiskInfo()" style="background: #58a6ff; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-weight: bold;">
+                    🔄 Actualizar Información
+                </button>
+                <button onclick="cleanupAllFolders()" style="background: #238636; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-weight: bold;">
+                    🧹 Limpiar Carpetas
+                </button>
             </div>
         </div>
     </div>
@@ -2225,6 +2279,196 @@
         }
         
         // Generar análisis completo de IA
+        // Gestión de comandos de mitigación
+        let mitigationCommands = [];
+        
+        // Extraer comandos de mitigación de la respuesta de la IA
+        function extractMitigationCommands(aiResponse) {
+            mitigationCommands = [];
+            
+            // Buscar líneas que empiecen con MITIGATE:
+            const lines = aiResponse.split('\n');
+            lines.forEach(line => {
+                const trimmed = line.trim();
+                if (trimmed.startsWith('MITIGATE:') || trimmed.match(/^MITIGATE\s*:/i)) {
+                    // Formato: MITIGATE: [Descripción] | [comando]
+                    const match = trimmed.match(/MITIGATE\s*:\s*(.+?)\s*\|\s*(.+)/i);
+                    if (match) {
+                        const description = match[1].trim();
+                        let command = match[2].trim();
+                        
+                        // Limpiar etiquetas <code> si existen
+                        command = command.replace(/<code[^>]*>/gi, '').replace(/<\/code>/gi, '').trim();
+                        
+                        if (command) {
+                            mitigationCommands.push({
+                                id: `MIT-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
+                                description: description,
+                                command: command,
+                                executed: false,
+                                result: null,
+                                timestamp: Date.now()
+                            });
+                        }
+                    }
+                }
+            });
+            
+            // También buscar comandos dentro de etiquetas <code> en la sección de mitigación
+            const mitigationSection = aiResponse.match(/MITIGACI[ÓO]N[^]*?(?=VERIFICACI[ÓO]N|$)/i);
+            if (mitigationSection) {
+                const codeMatches = mitigationSection[0].matchAll(/<code[^>]*>([^<]+)<\/code>/gi);
+                for (const match of codeMatches) {
+                    const command = match[1].trim();
+                    // Solo agregar si no está ya en la lista y parece un comando válido
+                    if (command && command.length > 3 && !mitigationCommands.some(c => c.command === command)) {
+                        // Intentar extraer descripción del contexto
+                        const context = mitigationSection[0].substring(0, mitigationSection[0].indexOf(match[0]));
+                        const descMatch = context.match(/(\d+\.\s*[^\n]+)/);
+                        const description = descMatch ? descMatch[1].trim() : 'Comando de mitigación';
+                        
+                        mitigationCommands.push({
+                            id: `MIT-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
+                            description: description,
+                            command: command,
+                            executed: false,
+                            result: null,
+                            timestamp: Date.now()
+                        });
+                    }
+                }
+            }
+            
+            updateMitigationCommandsUI();
+        }
+        
+        // Actualizar UI de comandos de mitigación
+        function updateMitigationCommandsUI() {
+            const container = document.getElementById('mitigationCommands');
+            if (!container) return; // Si el contenedor no existe, salir
+            
+            if (mitigationCommands.length === 0) {
+                container.innerHTML = '<div class="empty-state" style="text-align: center; padding: 40px; color: #8b949e;">No hay comandos de mitigación disponibles. Genera un análisis completo para ver las recomendaciones.</div>';
+                return;
+            }
+            
+            container.innerHTML = mitigationCommands.map(cmd => {
+                const executedClass = cmd.executed ? (cmd.result?.success ? 'success' : 'error') : '';
+                const executedBadge = cmd.executed ? 
+                    (cmd.result?.success ? 
+                        '<span style="background: #3fb950; color: white; padding: 2px 8px; border-radius: 4px; font-size: 0.8rem; margin-left: 10px;">✓ Ejecutado</span>' :
+                        '<span style="background: #da3633; color: white; padding: 2px 8px; border-radius: 4px; font-size: 0.8rem; margin-left: 10px;">✗ Error</span>') :
+                    '';
+                
+                return `
+                    <div style="background: #0d1117; border: 1px solid #30363d; border-radius: 6px; padding: 15px; margin-bottom: 10px; ${executedClass === 'success' ? 'border-left: 3px solid #3fb950;' : executedClass === 'error' ? 'border-left: 3px solid #da3633;' : 'border-left: 3px solid #58a6ff;'}">
+                        <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 10px;">
+                            <div style="flex: 1;">
+                                <div style="color: #58a6ff; font-weight: bold; margin-bottom: 5px;">${escapeHtml(cmd.description)} ${executedBadge}</div>
+                                <div style="background: rgba(0,0,0,0.3); padding: 8px; border-radius: 4px; font-family: 'Courier New', monospace; font-size: 0.85rem; color: #c9d1d9; margin-top: 8px;">
+                                    ${escapeHtml(cmd.command)}
+                                </div>
+                                ${cmd.executed && cmd.result ? `
+                                    <div style="margin-top: 10px; padding: 10px; background: ${cmd.result.success ? 'rgba(63, 185, 80, 0.1)' : 'rgba(218, 54, 51, 0.1)'}; border-radius: 4px; border-left: 3px solid ${cmd.result.success ? '#3fb950' : '#da3633'};">
+                                        <div style="color: ${cmd.result.success ? '#3fb950' : '#da3633'}; font-weight: bold; margin-bottom: 5px;">
+                                            ${cmd.result.success ? '✓ Ejecutado correctamente' : '✗ Error al ejecutar'}
+                                        </div>
+                                        ${cmd.result.output ? `<div style="color: #c9d1d9; font-size: 0.85rem; white-space: pre-wrap; font-family: monospace;">${escapeHtml(cmd.result.output)}</div>` : ''}
+                                        ${cmd.result.error ? `<div style="color: #da3633; font-size: 0.85rem; white-space: pre-wrap; font-family: monospace; margin-top: 5px;">${escapeHtml(cmd.result.error)}</div>` : ''}
+                                    </div>
+                                ` : ''}
+                            </div>
+                        </div>
+                        <div style="display: flex; gap: 10px; margin-top: 10px;">
+                            ${!cmd.executed ? `
+                                <button onclick="executeMitigationCommand('${cmd.id}')" style="background: #238636; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 0.9rem;">▶️ Ejecutar</button>
+                            ` : `
+                                <button onclick="executeMitigationCommand('${cmd.id}')" style="background: #58a6ff; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 0.9rem;">🔄 Re-ejecutar</button>
+                            `}
+                            <button onclick="copyMitigationCommand('${cmd.id}')" style="background: #30363d; color: #c9d1d9; border: 1px solid #30363d; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 0.9rem;">📋 Copiar</button>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+        
+        // Ejecutar comando de mitigación
+        async function executeMitigationCommand(commandId) {
+            const cmd = mitigationCommands.find(c => c.id === commandId);
+            if (!cmd) return;
+            
+            // Confirmar antes de ejecutar comandos destructivos
+            const destructiveCommands = ['rm ', 'kill', 'iptables', 'ufw', 'delete', 'remove'];
+            const isDestructive = destructiveCommands.some(dc => cmd.command.toLowerCase().includes(dc));
+            
+            if (isDestructive) {
+                const confirmed = confirm(`⚠️ ADVERTENCIA: Este comando puede ser destructivo:\n\n${cmd.command}\n\n¿Estás seguro de que quieres ejecutarlo?`);
+                if (!confirmed) return;
+            }
+            
+            // Mostrar loading
+            cmd.executing = true;
+            updateMitigationCommandsUI();
+            
+            try {
+                const response = await fetch('/api/mitigation/execute', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        command: cmd.command,
+                        description: cmd.description
+                    })
+                });
+                
+                const data = await response.json();
+                
+                cmd.executed = true;
+                cmd.executing = false;
+                cmd.result = {
+                    success: data.success || false,
+                    output: data.output || '',
+                    error: data.error || null,
+                    exitCode: data.exitCode || null,
+                    timestamp: Date.now()
+                };
+                
+                updateMitigationCommandsUI();
+                
+                // Mostrar notificación
+                if (data.success) {
+                    showToast('Comando Ejecutado', `Comando ejecutado correctamente: ${cmd.description}`, 'success');
+                } else {
+                    showToast('Error al Ejecutar', `Error al ejecutar comando: ${data.error || 'Error desconocido'}`, 'error');
+                }
+            } catch (error) {
+                cmd.executed = true;
+                cmd.executing = false;
+                cmd.result = {
+                    success: false,
+                    output: '',
+                    error: error.message,
+                    timestamp: Date.now()
+                };
+                
+                updateMitigationCommandsUI();
+                showToast('Error', `Error al ejecutar comando: ${error.message}`, 'error');
+            }
+        }
+        
+        // Copiar comando al portapapeles
+        function copyMitigationCommand(commandId) {
+            const cmd = mitigationCommands.find(c => c.id === commandId);
+            if (!cmd) return;
+            
+            navigator.clipboard.writeText(cmd.command).then(() => {
+                showToast('Copiado', 'Comando copiado al portapapeles', 'success', 2000);
+            }).catch(err => {
+                showToast('Error', 'No se pudo copiar al portapapeles', 'error');
+            });
+        }
+        
         async function generateAIAnalysis() {
             const chatEl = document.getElementById('aiChat');
             const model = document.getElementById('aiModel').value;
@@ -2814,18 +3058,142 @@ ${JSON.stringify(currentSystemData, null, 2)}`;
             showToast(`🚨 Archivo sospechoso capturado: ${data.fileName}`, 'warning');
         });
         
-        // Cargar archivos al cambiar a la pestaña
-        const originalSwitchTab = window.switchTab;
-        window.switchTab = function(tabName) {
-            originalSwitchTab(tabName);
-            if (tabName === 'captured') {
-                loadCapturedFiles();
+        // Gestión de monitoreo de espacio en disco
+        let diskAlerts = [];
+        
+        // Escuchar alertas de espacio en disco
+        socket.on('disk_alert', (data) => {
+            console.warn('💾 Alerta de espacio:', data);
+            
+            diskAlerts.unshift({
+                ...data,
+                timestamp: Date.now()
+            });
+            
+            // Mantener solo las últimas 50 alertas
+            if (diskAlerts.length > 50) {
+                diskAlerts.splice(50);
             }
-        };
+            
+            updateDiskAlertsUI();
+            
+            // Mostrar notificación
+            const alertType = data.type === 'critical' ? 'error' : data.type === 'rapid_growth' ? 'warning' : 'warning';
+            showToast('Alerta de Espacio', data.message, alertType, 10000);
+        });
+        
+        // Actualizar UI de alertas de disco
+        function updateDiskAlertsUI() {
+            const container = document.getElementById('diskAlerts');
+            if (!container) return;
+            
+            if (diskAlerts.length === 0) {
+                container.innerHTML = '<div class="empty-state" style="text-align: center; padding: 40px; color: #8b949e;">No hay alertas de espacio en disco...</div>';
+                return;
+            }
+            
+            container.innerHTML = diskAlerts.map(alert => {
+                const date = new Date(alert.timestamp);
+                const alertColor = alert.type === 'critical' ? '#da3633' : alert.type === 'rapid_growth' ? '#ffa657' : '#58a6ff';
+                const alertIcon = alert.type === 'critical' ? '🚨' : alert.type === 'rapid_growth' ? '⚠️' : 'ℹ️';
+                
+                return `
+                    <div style="background: #0d1117; border: 1px solid #30363d; border-left: 3px solid ${alertColor}; border-radius: 6px; padding: 15px; margin-bottom: 10px;">
+                        <div style="display: flex; justify-content: space-between; align-items: start;">
+                            <div style="flex: 1;">
+                                <div style="color: ${alertColor}; font-weight: bold; margin-bottom: 5px;">
+                                    ${alertIcon} ${alert.type === 'critical' ? 'CRÍTICO' : alert.type === 'rapid_growth' ? 'CRECIMIENTO RÁPIDO' : 'ADVERTENCIA'}
+                                </div>
+                                <div style="color: #c9d1d9; margin-bottom: 5px;">${escapeHtml(alert.message)}</div>
+                                <div style="color: #8b949e; font-size: 0.85rem;">
+                                    📅 ${date.toLocaleString('es-ES')}
+                                    ${alert.usagePercent ? ` • Uso: ${alert.usagePercent}%` : ''}
+                                    ${alert.growthMBPerHour ? ` • Crecimiento: ${alert.growthMBPerHour.toFixed(2)}MB/hora` : ''}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+        
+        // Actualizar información de espacio en disco
+        async function refreshDiskInfo() {
+            try {
+                const response = await fetch('/api/disk/info');
+                const data = await response.json();
+                
+                if (data.success) {
+                    // Actualizar uso de disco
+                    const usagePercent = data.diskUsage?.usagePercent || 0;
+                    const usageColor = usagePercent >= 95 ? '#da3633' : usagePercent >= 85 ? '#ffa657' : '#58a6ff';
+                    document.getElementById('diskUsagePercent').textContent = `${usagePercent}%`;
+                    document.getElementById('diskUsagePercent').style.color = usageColor;
+                    document.getElementById('diskUsageDetails').textContent = 
+                        data.diskUsage ? `Usado: ${data.diskUsage.used} | Disponible: ${data.diskUsage.available}` : '--';
+                    
+                    // Actualizar tamaños de carpetas
+                    const formatSize = (bytes) => {
+                        if (!bytes) return '--';
+                        const gb = bytes / (1024 * 1024 * 1024);
+                        if (gb >= 1) return `${gb.toFixed(2)}GB`;
+                        const mb = bytes / (1024 * 1024);
+                        return `${mb.toFixed(2)}MB`;
+                    };
+                    
+                    document.getElementById('quarantineSize').textContent = formatSize(data.folderSizes?.quarantine || 0);
+                    document.getElementById('captureSize').textContent = formatSize(data.folderSizes?.capture || 0);
+                    document.getElementById('reportsSize').textContent = formatSize(data.folderSizes?.reports || 0);
+                    
+                    showToast('Actualizado', 'Información de espacio en disco actualizada', 'success', 2000);
+                }
+            } catch (error) {
+                console.error('Error al actualizar información de disco:', error);
+                showToast('Error', 'No se pudo actualizar la información de disco', 'error');
+            }
+        }
+        
+        // Limpiar todas las carpetas
+        async function cleanupAllFolders() {
+            const confirmed = confirm('¿Estás seguro de que quieres limpiar todas las carpetas? Se eliminarán los archivos más antiguos hasta liberar espacio.');
+            if (!confirmed) return;
+            
+            try {
+                const response = await fetch('/api/disk/cleanup', {
+                    method: 'POST'
+                });
+                const data = await response.json();
+                
+                if (data.success) {
+                    showToast('Limpieza Completada', `Se liberaron ${data.freedSpace || 0} archivos`, 'success');
+                    refreshDiskInfo();
+                } else {
+                    showToast('Error', data.error || 'Error al limpiar carpetas', 'error');
+                }
+            } catch (error) {
+                console.error('Error al limpiar carpetas:', error);
+                showToast('Error', 'No se pudo limpiar las carpetas', 'error');
+            }
+        }
+        
+        // Cargar archivos al cambiar a la pestaña (evitar duplicación)
+        if (!window.switchTabOriginal) {
+            window.switchTabOriginal = window.switchTab;
+            window.switchTab = function(tabName) {
+                window.switchTabOriginal(tabName);
+                if (tabName === 'captured') {
+                    loadCapturedFiles();
+                } else if (tabName === 'disk') {
+                    refreshDiskInfo();
+                }
+            };
+        }
         
         // Cargar al iniciar si estamos en la pestaña correcta
         if (document.getElementById('tab-captured')?.classList.contains('active')) {
             loadCapturedFiles();
+        } else if (document.getElementById('tab-disk')?.classList.contains('active')) {
+            refreshDiskInfo();
         }
     </script>
 </body>
